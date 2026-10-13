@@ -5,12 +5,13 @@ import { onPlainClick } from "../lib/events";
 import type { ViewLocation } from "../lib/location";
 import type { Entry, ViewerMode } from "../types";
 
-// The viewed file's path, change stats, view controls and review toggle.
+// The viewed file's path, change stats, view controls and review toggle. The
+// all-files diff shows a summary here instead; each file has a DiffFileHeader.
 export function FileHeading({
   path,
   title,
+  summary,
   href,
-  stats,
   showModes,
   viewerMode,
   onViewerMode,
@@ -30,8 +31,9 @@ export function FileHeading({
   path: string;
   // Replaces the path, for the commit message.
   title: string;
+  // Replaces the path and review toggle, for the all-files diff.
+  summary?: string;
   href: (overrides?: Partial<ViewLocation>) => string;
-  stats?: Entry;
   showModes: boolean;
   viewerMode: ViewerMode;
   onViewerMode: (mode: ViewerMode) => void;
@@ -49,18 +51,14 @@ export function FileHeading({
 }) {
   return (
     <div className="file-heading">
-      <a className="file-path" href={path ? href() : undefined} onClick={onPlainClick()}>
-        {title || path || "No file selected"}
-      </a>
-      {path && !title && <CopyPathButton path={path} />}
-      {stats?.additions != null && stats.deletions != null && (
-        <LineStats
-          className="file-diff-stats line-stats"
-          additions={stats.additions}
-          deletions={stats.deletions}
-          title="Lines changed"
-        />
+      {summary ? (
+        <span className="files-summary">{summary}</span>
+      ) : (
+        <a className="file-path" href={path ? href() : undefined} onClick={onPlainClick()}>
+          {title || path || "No file selected"}
+        </a>
       )}
+      {path && !title && !summary && <CopyPathButton path={path} />}
       <div className="view-controls">
         {showModes && (
           <div className="viewer-modes" role="group" aria-label="File view">
@@ -112,19 +110,83 @@ export function FileHeading({
           Wrap
         </button>
       </div>
-      {path && (
-        <button
-          className={`review-toggle${reviewed ? " reviewed" : ""}`}
-          aria-label={reviewed ? "Mark unreviewed" : "Mark reviewed"}
-          aria-pressed={reviewed}
-          disabled={reviewDisabled}
-          title={reviewed ? "Move back to unreviewed" : "Move to Reviewed"}
-          onClick={onToggleReviewed}
-        >
-          {reviewed ? "✓ Reviewed" : "Mark reviewed"}
-        </button>
+      {path && !summary && (
+        <ReviewToggle reviewed={reviewed} disabled={reviewDisabled} onToggle={onToggleReviewed} />
       )}
     </div>
+  );
+}
+
+// A file's sticky header in the all-files diff. Its background shows whether
+// the file is in the unreviewed or the reviewed section.
+export function DiffFileHeader({
+  path,
+  title,
+  href,
+  stats,
+  notice,
+  current,
+  reviewed,
+  reviewDisabled,
+  onSelect,
+  onToggleReviewed,
+}: {
+  path: string;
+  // Replaces the path, for the commit message.
+  title: string;
+  href: string;
+  stats?: Entry;
+  notice?: string;
+  current: boolean;
+  reviewed: boolean;
+  reviewDisabled: boolean;
+  onSelect: () => void;
+  onToggleReviewed: () => void;
+}) {
+  return (
+    <div
+      className={`file-heading diff-file-heading${reviewed ? " reviewed" : ""}`}
+      data-path={path}
+      data-current={current ? "true" : undefined}
+    >
+      <a className="file-path" href={href} onClick={onPlainClick(onSelect)}>
+        {title || path}
+      </a>
+      {!title && <CopyPathButton path={path} />}
+      {stats?.additions != null && stats.deletions != null && (
+        <LineStats
+          className="file-diff-stats line-stats"
+          additions={stats.additions}
+          deletions={stats.deletions}
+          title="Lines changed"
+        />
+      )}
+      {notice && <span className="file-notice">{notice}</span>}
+      <ReviewToggle reviewed={reviewed} disabled={reviewDisabled} onToggle={onToggleReviewed} />
+    </div>
+  );
+}
+
+function ReviewToggle({
+  reviewed,
+  disabled,
+  onToggle,
+}: {
+  reviewed: boolean;
+  disabled: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      className={`review-toggle${reviewed ? " reviewed" : ""}`}
+      aria-label={reviewed ? "Mark unreviewed" : "Mark reviewed"}
+      aria-pressed={reviewed}
+      disabled={disabled}
+      title={reviewed ? "Move back to unreviewed" : "Move to Reviewed"}
+      onClick={onToggle}
+    >
+      {reviewed ? "✓ Reviewed" : "Mark reviewed"}
+    </button>
   );
 }
 

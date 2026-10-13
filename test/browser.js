@@ -58,6 +58,11 @@ const evaluate = async (code) => (await browser("eval", code)).result;
 const wait = (code) => browser("wait", "--fn", `Boolean(${code})`);
 const click = (name) =>
   browser("find", "role", "button", "click", "--name", name, "--exact");
+// The viewed file's review toggle; the all-files diff has one per file.
+async function reviewViewed(label) {
+  await wait(`${heading}?.querySelector('.review-toggle')?.getAttribute('aria-label') === ${JSON.stringify(label)}`);
+  await evaluate(`${heading}.querySelector('.review-toggle').click()`);
+}
 const tree = (name) =>
   browser("find", "role", "treeitem", "click", "--name", name, "--exact");
 async function reviewScope(name) {
@@ -90,7 +95,11 @@ async function hoverTree(name, section = "Unreviewed") {
   })()`);
   await browser("mouse", "move", String(point.x), String(point.y));
 }
-const shadow = "document.querySelector('diffs-container')?.shadowRoot";
+// The viewed file: in the all-files diff, the file whose header is current.
+const currentHeading = "document.querySelector('.diff-file-heading[data-current]')";
+const heading = `(${currentHeading} || document.querySelector('.file-heading'))`;
+const headingLink = ".file-heading:not(.diff-file-heading) a.file-path, .diff-file-heading[data-current] a.file-path";
+const shadow = `(${currentHeading}?.closest('diffs-container') || document.querySelector('diffs-container'))?.shadowRoot`;
 const lineStats = (section = "Unreviewed") =>
   evaluate(
     section === "Unreviewed"
@@ -273,7 +282,7 @@ try {
     await wait("document.querySelector('.file-tree') && !document.querySelector('.loading')");
     await hoverTree("shipping.ts");
     const originalURL = await evaluate("location.href");
-    const originalPath = await evaluate("document.querySelector('.file-path').textContent");
+    const originalPath = await evaluate(`${heading}.querySelector('.file-path').textContent`);
     if (gesture === "middle") {
       await browser("mouse", "down", "middle");
       await browser("mouse", "up", "middle");
@@ -290,13 +299,13 @@ try {
     const opened = tabs.find((tab) => tab.tabId !== originalTab);
     await browser("tab", opened.tabId);
     await wait(`${shadow}?.querySelector('pre')?.textContent.includes(${JSON.stringify(expectedText)})`);
-    assert.equal(await evaluate("document.querySelector('.file-path').textContent"), "src/shipping.ts");
+    assert.equal(await evaluate(`${heading}.querySelector('.file-path').textContent`), "src/shipping.ts");
     assert.equal(await evaluate("new URLSearchParams(location.search).get('mode')"), new URLSearchParams(scope).get("mode"));
     await browser("reload");
     await wait(`${shadow}?.querySelector('pre')?.textContent.includes(${JSON.stringify(expectedText)})`);
-    const headerHref = await evaluate("document.querySelector('a.file-path').href");
+    const headerHref = await evaluate(`${heading}.querySelector('a.file-path').href`);
     assert.equal(headerHref, await evaluate("location.href"));
-    await browser("click", "a.file-path", "--new-tab");
+    await browser("click", headingLink, "--new-tab");
     const headerTabs = (await browser("tab", "list")).tabs;
     assert.equal(headerTabs.length, 3);
     const headerTab = headerTabs.find((tab) => tab.tabId !== originalTab && tab.tabId !== opened.tabId);
@@ -307,7 +316,7 @@ try {
     await browser("tab", "close", opened.tabId);
     await browser("tab", originalTab);
     assert.equal(await evaluate("location.href"), originalURL);
-    assert.equal(await evaluate("document.querySelector('.file-path').textContent"), originalPath);
+    assert.equal(await evaluate(`${heading}.querySelector('.file-path').textContent`), originalPath);
   }
   await browser("open", `${url}/?mode=commit&to=${f.second}`);
   await wait("document.querySelector('file-tree-container')?.shadowRoot?.querySelector('[aria-label=\"Commit message\"]')");
@@ -321,8 +330,8 @@ try {
   const messageTab = messageTabs.find((tab) => tab.tabId !== originalTab);
   await browser("tab", messageTab.tabId);
   await wait(`${shadow}?.querySelector('pre')?.textContent.includes('Charge 12 for international orders.')`);
-  assert.match(await evaluate("document.querySelector('.file-path').textContent"), /Commit message/);
-  assert.equal(await evaluate("Boolean(document.querySelector('.copy-path'))"), false);
+  assert.match(await evaluate(`${heading}.querySelector('.file-path').textContent`), /Commit message/);
+  assert.equal(await evaluate(`Boolean(${heading}.querySelector('.copy-path'))`), false);
   assert.equal(await evaluate("new URLSearchParams(location.search).get('path')"), "\0commit-message");
   await browser("reload");
   await wait(`${shadow}?.querySelector('pre')?.textContent.includes('Charge 12 for international orders.')`);
@@ -334,7 +343,7 @@ try {
   await tree("shipping.ts");
   await wait("new URLSearchParams(location.search).get('path') === 'src/shipping.ts'");
   await browser("back");
-  await wait("document.querySelector('.file-path')?.textContent === 'README.md'");
+  await wait(`${heading}.querySelector('.file-path')?.textContent === 'README.md'`);
   await browser("forward");
   await wait(`${shadow}?.querySelector('pre')?.textContent.includes('THRESHOLD = 75')`);
   await browser("press", "f");
@@ -350,13 +359,13 @@ try {
   await browser("tab", originalTab);
   await browser("open", url);
   await wait("document.querySelector('.file-tree')");
-  assert.equal(await evaluate("document.querySelector('.file-path').hasAttribute('href')"), false);
+  assert.equal(await evaluate(`${heading}.querySelector('.file-path').hasAttribute('href')`), false);
   console.log("PASS Cmd/Ctrl/middle-click preserves the source tab; new tabs and reload retain files, commit messages, working/commit/range scopes; Back/Forward, finder and viewer header links work");
 
   await browser("open", `${url}/?mode=commit&to=${f.second}&path=src%2Fshipping.ts`);
   await wait(`${shadow}?.querySelector('[data-line-type="change-deletion"]')`);
   assert.equal(
-    await evaluate("document.querySelector('.file-diff-stats')?.getAttribute('aria-label')"),
+    await evaluate(`${heading}.querySelector('.file-diff-stats')?.getAttribute('aria-label')`),
     "1 lines added, 1 lines removed",
   );
   await browser("click", '[aria-label="View old"]');
@@ -390,7 +399,7 @@ try {
     assert.equal(await evaluate("new URLSearchParams(location.search).get('view')"), mode);
     assert.equal(await evaluate(`document.querySelector(${JSON.stringify(selector)}).getAttribute('aria-current')`), "true");
     assert.equal(await evaluate("new URLSearchParams(location.search).get('to')"), "HEAD~1");
-    assert.equal(await evaluate("document.querySelector('.file-path').textContent"), "src/shipping.ts");
+    assert.equal(await evaluate(`${heading}.querySelector('.file-path').textContent`), "src/shipping.ts");
     await browser("tab", "close", modeTab.tabId);
     await browser("tab", originalTab);
     assert.equal(await evaluate("location.href"), modeSourceURL);
@@ -407,10 +416,10 @@ try {
     else assert.doesNotMatch(text, /const baseRate = 5/);
     assert.equal(await evaluate(`Boolean(${shadow}?.querySelector('[data-line-type="change-deletion"], [data-line-type="change-addition"]'))`), false);
     assert.equal(await evaluate("Boolean(document.querySelector('[aria-label=\"Diff layout\"]'))"), false);
-    const href = await evaluate("document.querySelector('a.file-path').href");
+    const href = await evaluate(`${heading}.querySelector('a.file-path').href`);
     assert.equal(new URL(href).searchParams.get("view"), mode);
     assert.equal(new URL(href).searchParams.get("to"), "HEAD~1");
-    await browser("click", "a.file-path", "--new-tab");
+    await browser("click", headingLink, "--new-tab");
     const sideTab = (await browser("tab", "list")).tabs.find((tab) => tab.tabId !== originalTab);
     await browser("tab", sideTab.tabId);
     await wait(`${shadow}?.querySelector('pre')?.textContent.includes(${JSON.stringify(expected)})`);
@@ -444,7 +453,7 @@ try {
   await browser("click", '[aria-label="View diff"]');
   await wait(`${shadow}?.querySelector('[data-line-type="change-deletion"]')`);
   assert.equal(await evaluate("document.querySelectorAll('.comment-marker').length"), 2);
-  assert.equal(await evaluate("new URL(document.querySelector('.file-path').href).searchParams.get('view')"), "diff");
+  assert.equal(await evaluate(`new URL(${heading}.querySelector('.file-path').href).searchParams.get('view')`), "diff");
   await browser("back");
   await wait("document.querySelector('[aria-label=\"View old\"]')?.getAttribute('aria-current') === 'true'");
   await browser("forward");
@@ -565,9 +574,9 @@ try {
     ),
     false,
   );
-  assert.equal(await evaluate("document.querySelector('.file-path').textContent"), "No file selected");
+  assert.equal(await evaluate(`${heading}.querySelector('.file-path').textContent`), "No file selected");
   await browser("press", "j");
-  await wait("document.querySelector('.file-path').textContent === 'src/discount.ts'");
+  await wait(`${heading}.querySelector('.file-path').textContent === 'src/discount.ts'`);
   await capture("files-empty");
   await browser("focus", '[aria-label="Find a file"]');
   assert.deepEqual(
@@ -580,7 +589,7 @@ try {
   await browser("fill", '[aria-label="Find a file"]', "shipping");
   assert.equal(await lineStats(), "26 total lines of code");
   await tree("shipping.ts");
-  await wait("document.querySelector('.file-path').textContent === 'src/shipping.ts'");
+  await wait(`${heading}.querySelector('.file-path').textContent === 'src/shipping.ts'`);
   await tree("shipping.ts");
   await evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
   assert.equal(
@@ -592,11 +601,11 @@ try {
     "shipping",
   );
   await browser("press", "j");
-  await wait("document.querySelector('.file-path').textContent === 'test/shipping.test.ts'");
+  await wait(`${heading}.querySelector('.file-path').textContent === 'test/shipping.test.ts'`);
   await browser("press", "j");
-  await wait("document.querySelector('.file-path').textContent === 'src/shipping.ts'");
+  await wait(`${heading}.querySelector('.file-path').textContent === 'src/shipping.ts'`);
   await browser("press", "k");
-  await wait("document.querySelector('.file-path').textContent === 'test/shipping.test.ts'");
+  await wait(`${heading}.querySelector('.file-path').textContent === 'test/shipping.test.ts'`);
   await browser("fill", '[aria-label="Find a file"]', "");
   await capture("search-focus");
   await tree("shipping.ts");
@@ -629,24 +638,24 @@ try {
   await browser("press", "Escape");
   await wait("!document.querySelector('.composer')");
   await browser("press", "j");
-  await wait("document.querySelector('.file-path').textContent !== 'src/shipping.ts'");
+  await wait(`${heading}.querySelector('.file-path').textContent !== 'src/shipping.ts'`);
   await browser("press", "k");
-  await wait("document.querySelector('.file-path').textContent === 'src/shipping.ts'");
+  await wait(`${heading}.querySelector('.file-path').textContent === 'src/shipping.ts'`);
   await browser("press", "r");
-  await wait("document.querySelector('.file-path').textContent === 'test/shipping.test.ts'");
+  await wait(`${heading}.querySelector('.file-path').textContent === 'test/shipping.test.ts'`);
   await browser("press", "u");
-  await wait("document.querySelector('.file-path').textContent === 'src/shipping.ts'");
-  await wait("document.querySelector('.review-toggle').getAttribute('aria-pressed') === 'false'");
+  await wait(`${heading}.querySelector('.file-path').textContent === 'src/shipping.ts'`);
+  await wait(`${heading}.querySelector('.review-toggle').getAttribute('aria-pressed') === 'false'`);
   await browser("press", "r");
-  await wait("document.querySelector('.file-path').textContent === 'test/shipping.test.ts'");
+  await wait(`${heading}.querySelector('.file-path').textContent === 'test/shipping.test.ts'`);
   await tree("shipping.ts");
-  await wait("document.querySelector('.review-toggle').getAttribute('aria-pressed') === 'true'");
+  await wait(`${heading}.querySelector('.review-toggle').getAttribute('aria-pressed') === 'true'`);
   await browser("press", "r");
-  await wait("document.querySelector('.review-toggle').getAttribute('aria-pressed') === 'false'");
+  await wait(`${heading}.querySelector('.review-toggle').getAttribute('aria-pressed') === 'false'`);
   await browser("press", "u");
-  await wait("document.querySelector('.review-toggle').getAttribute('aria-pressed') === 'true'");
+  await wait(`${heading}.querySelector('.review-toggle').getAttribute('aria-pressed') === 'true'`);
   await browser("press", "u");
-  await wait("document.querySelector('.review-toggle').getAttribute('aria-pressed') === 'false'");
+  await wait(`${heading}.querySelector('.review-toggle').getAttribute('aria-pressed') === 'false'`);
   await browser("press", "b");
   assert.equal(await evaluate("document.querySelector('#file-browser').hidden"), true);
   await browser("press", "b");
@@ -696,13 +705,13 @@ try {
   await browser("press", "f");
   await wait("document.querySelector('[aria-label=\"Review scope\"]').textContent.includes('File Browser')");
   await tree("README.md");
-  await wait("document.querySelector('.file-path').textContent === 'README.md'");
+  await wait(`${heading}.querySelector('.file-path').textContent === 'README.md'`);
   await browser("press", "j");
-  await wait("document.querySelector('.file-path').textContent === 'src/discount.ts'");
+  await wait(`${heading}.querySelector('.file-path').textContent === 'src/discount.ts'`);
   await browser("press", "k");
-  await wait("document.querySelector('.file-path').textContent === 'README.md'");
+  await wait(`${heading}.querySelector('.file-path').textContent === 'README.md'`);
   await browser("press", "r");
-  await wait("document.querySelector('.file-path').textContent === 'src/discount.ts'");
+  await wait(`${heading}.querySelector('.file-path').textContent === 'src/discount.ts'`);
   assert.equal(
     await evaluate(
       "Array.from(document.querySelector('section[aria-label=Reviewed] file-tree-container').shadowRoot.querySelectorAll('[role=treeitem]')).some(item => item.getAttribute('aria-label') === 'README.md')",
@@ -727,19 +736,19 @@ try {
     ["src/shipping.ts", "test/shipping.test.ts"],
   );
   await browser("press", "Enter");
-  await wait("document.querySelector('.file-path').textContent === 'src/shipping.ts'");
+  await wait(`${heading}.querySelector('.file-path').textContent === 'src/shipping.ts'`);
   await browser("find", "role", "button", "click", "--name", "Find file F", "--exact");
   await browser("wait", '[aria-label="Fuzzy find file"]');
   await browser("press", "Escape");
   await wait("!document.querySelector('.file-finder')");
   await tree(".gitignore");
-  await wait("document.querySelector('.file-path').textContent === '.gitignore'");
+  await wait(`${heading}.querySelector('.file-path').textContent === '.gitignore'`);
   await browser("press", "j");
-  await wait("document.querySelector('.file-path').textContent === 'README.md'");
+  await wait(`${heading}.querySelector('.file-path').textContent === 'README.md'`);
   await browser("press", "j");
-  await wait("document.querySelector('.file-path').textContent === 'src/discount.ts'");
+  await wait(`${heading}.querySelector('.file-path').textContent === 'src/discount.ts'`);
   await browser("press", "k");
-  await wait("document.querySelector('.file-path').textContent === 'README.md'");
+  await wait(`${heading}.querySelector('.file-path').textContent === 'README.md'`);
   await browser("press", "r");
   await tree("shipping.ts");
   await wait(`${shadow}?.querySelector('pre')?.textContent.includes('THRESHOLD = 75')`);
@@ -760,7 +769,7 @@ try {
     "wrap",
   );
   assert.match(await evaluate("document.querySelector('[aria-label=\"Review scope\"]').textContent"), /File Browser/);
-  assert.equal(await evaluate("document.querySelector('.file-path').textContent"), "src/shipping.ts");
+  assert.equal(await evaluate(`${heading}.querySelector('.file-path').textContent`), "src/shipping.ts");
   await tree("src");
   await browser("press", "ArrowLeft");
   await waitState((state) => state.view.collapsed.includes("src/"));
@@ -794,10 +803,10 @@ try {
   await wait("document.activeElement.classList.contains('comment')");
   await tree("README.md");
   // The comment text edits in place; only the title opens the commented file.
-  await wait("document.querySelector('.file-path')?.textContent === 'README.md'");
+  await wait(`${heading}.querySelector('.file-path')?.textContent === 'README.md'`);
   await browser("click", ".comment p");
   await wait("document.activeElement.matches('.comment textarea[aria-label=\"Edit comment\"]')");
-  assert.equal(await evaluate("document.querySelector('.file-path').textContent"), "README.md");
+  assert.equal(await evaluate(`${heading}.querySelector('.file-path').textContent`), "README.md");
   await click("Cancel edit");
   await browser("click", ".comment-top");
   await wait(
@@ -963,7 +972,7 @@ try {
   assert.equal(await evaluate("document.querySelector('#file-browser').hidden"), true);
   assert.equal(await evaluate("document.querySelector('#review-comments').hidden"), true);
   assert.match(await evaluate("document.querySelector('[aria-label=\"Review scope\"]').textContent"), /Uncommitted changes/);
-  assert.equal(await evaluate("document.querySelector('.file-path').textContent"), "src/shipping.ts");
+  assert.equal(await evaluate(`${heading}.querySelector('.file-path').textContent`), "src/shipping.ts");
   await click("Show file browser");
   await click("Open comment on src/shipping.ts:14");
   await wait(
@@ -1101,7 +1110,7 @@ try {
   assert.doesNotMatch(await codeText(), /THRESHOLD/);
   await browser("reload");
   await wait(`${shadow}?.querySelector('pre')?.textContent.includes('const baseRate = 5')`);
-  assert.equal(await evaluate("document.querySelector('.file-path').textContent"), "src/shipping.ts");
+  assert.equal(await evaluate(`${heading}.querySelector('.file-path').textContent`), "src/shipping.ts");
   assert.match(await evaluate("document.querySelector('[aria-label=\"Review scope\"]').textContent"), /Add international shipping rates/);
   await wait(`${shadow}?.querySelector('[data-diff-type="split"]')`);
   console.log("PASS reload restores a non-default commit, its selected file and split layout");
@@ -1255,7 +1264,7 @@ try {
   await wait(`${shadow}?.querySelector('pre')?.textContent.includes('THRESHOLD = 100')`);
   assert.equal(await evaluate("document.querySelector('[aria-label=\"Find a file\"]').value"), "shipping.ts");
   assert.equal(await evaluate("document.querySelector('.code-footer').textContent.trim()"), `${f.first.slice(0, 7)} → ${f.third.slice(0, 7)}`);
-  assert.equal(await evaluate("document.querySelector('.file-path').textContent"), "src/shipping.ts");
+  assert.equal(await evaluate(`${heading}.querySelector('.file-path').textContent`), "src/shipping.ts");
   assert.doesNotMatch(await codeText(), /THRESHOLD = 75/);
   await browser("focus", '[aria-label="Find a file"]');
   await browser("press", "Control+a");
@@ -1423,10 +1432,10 @@ try {
   await wait(`${explorerScroller}.scrollTop > 0 && document.querySelector('.code-view').scrollTop === 1200`);
   const longURL = await evaluate("location.href");
   assert.equal(new URL(longURL).searchParams.has("scroll"), false);
-  await browser("click", "a.file-path", "--new-tab");
+  await browser("click", headingLink, "--new-tab");
   const scrollTab = (await browser("tab", "list")).tabs.find((tab) => tab.tabId !== originalTab);
   await browser("tab", scrollTab.tabId);
-  await wait("document.querySelector('.file-path')?.textContent === 'long.ts' && document.querySelector('.code-view')?.scrollTop === 1200");
+  await wait(`${heading}.querySelector('.file-path')?.textContent === 'long.ts' && document.querySelector('.code-view')?.scrollTop === 1200`);
   assert.ok(await evaluate(`${explorerScroller}.scrollTop > 0`));
   assert.equal(await evaluate("location.href"), longURL);
   await browser("tab", "close", scrollTab.tabId);
@@ -1491,7 +1500,7 @@ try {
   await browser("click", '[aria-label="View new"]', "--new-tab");
   const modeScrollTab = (await browser("tab", "list")).tabs.find((tab) => tab.tabId !== originalTab);
   await browser("tab", modeScrollTab.tabId);
-  await wait("document.querySelector('.file-path')?.textContent === 'long.ts' && document.querySelector('[aria-label=\"View new\"]')?.getAttribute('aria-current') === 'true'");
+  await wait(`${heading}.querySelector('.file-path')?.textContent === 'long.ts' && document.querySelector('[aria-label="View new"]')?.getAttribute('aria-current') === 'true'`);
   await wait("document.querySelector('.code-view').scrollTop === 1300");
   assert.deepEqual(
     await evaluate("Array.from(new URL(location.href).searchParams.keys()).sort()"),
@@ -1542,7 +1551,7 @@ try {
   await browser("press", "f");
   await browser("fill", '[aria-label="Fuzzy find file"]', "long.ts");
   await browser("press", "Enter");
-  await wait("document.querySelector('.file-path')?.textContent === 'long.ts'");
+  await wait(`${heading}.querySelector('.file-path')?.textContent === 'long.ts'`);
   await browser("focus", '[aria-label="Review scope"]');
   const infoBeforeGf = await evaluate(
     "performance.getEntriesByType('resource').filter(e => e.name.includes('/api/info?')).length",
@@ -1634,7 +1643,7 @@ try {
   await browser("reload");
   await wait("document.querySelectorAll('.comment').length === 3");
   await wait(`${shadow}?.querySelector('pre')?.textContent.includes('Charge 12 for international orders.')`);
-  assert.match(await evaluate("document.querySelector('.file-path').textContent"), /Commit message/);
+  assert.match(await evaluate(`${heading}.querySelector('.file-path').textContent`), /Commit message/);
   await browser("click", ".comment:last-child .comment-top");
   await wait(
     `${shadow}?.querySelector('pre')?.textContent.includes('Charge 12 for international orders.')`,
@@ -1659,7 +1668,7 @@ try {
     "PASS full commit message, real range selection 3–4, hover, marker reopen, exact mixed clipboard, reload navigation",
   );
 
-  await click("Mark reviewed");
+  await reviewViewed("Mark reviewed");
   await resizePanel("files", 60);
   await click("Hide comments");
   const beforeClearFilesWidth = await evaluate("document.querySelector('#file-browser').getBoundingClientRect().width");
@@ -1685,7 +1694,7 @@ try {
     await evaluate("document.querySelectorAll('.comment-marker').length"),
     0,
   );
-  assert.equal(await evaluate("document.querySelector('.file-path').textContent"), "src/shipping.ts");
+  assert.equal(await evaluate(`${heading}.querySelector('.file-path').textContent`), "src/shipping.ts");
   assert.equal(await evaluate("document.querySelector('#review-comments').hidden"), true);
   assert.equal(await evaluate("document.querySelector('#file-browser').getBoundingClientRect().width"), beforeClearFilesWidth);
   assert.equal(await evaluate("document.querySelector('#review-comments').getBoundingClientRect().width"), beforeClearCommentsWidth);
@@ -1696,9 +1705,9 @@ try {
   assert.doesNotMatch(await evaluate("document.body.textContent"), /Clear Comments|Undo/);
   await capture("comments-cleared");
   await browser("reload");
-  await wait("document.querySelector('.file-path')?.textContent === 'src/shipping.ts'");
+  await wait(`${heading}.querySelector('.file-path')?.textContent === 'src/shipping.ts'`);
   assert.deepEqual(await comments(), []);
-  assert.equal(await evaluate("document.querySelector('.file-path').textContent"), "src/shipping.ts");
+  assert.equal(await evaluate(`${heading}.querySelector('.file-path').textContent`), "src/shipping.ts");
   assert.equal(await evaluate("document.querySelector('#review-comments').hidden"), true);
   assert.equal(await evaluate("document.querySelector('#file-browser').getBoundingClientRect().width"), beforeClearFilesWidth);
   assert.equal(await evaluate("Array.from(document.querySelectorAll('button')).some(button => button.textContent.trim() === 'Mark reviewed')"), true);
@@ -1754,7 +1763,7 @@ try {
     return (section?.textContent || '') + Array.from(items).map(e => e.getAttribute('aria-label')).join(' ');
   })()`);
   const reviewedText = () => sectionText("Reviewed");
-  await click("Mark reviewed");
+  await reviewViewed("Mark reviewed");
   assert.match(await reviewedText(), /Commit message/);
   assert.match(
     await evaluate(
@@ -1771,7 +1780,7 @@ try {
   );
   assert.equal(
     await evaluate(
-      "document.querySelector('.review-toggle').getAttribute('aria-pressed')",
+      `${heading}.querySelector('.review-toggle').getAttribute('aria-pressed')`,
     ),
     "true",
   );
@@ -1781,23 +1790,23 @@ try {
   );
   assert.equal(await reviewedText(), "");
   assert.equal(await lineStats(), "6 lines added, 1 lines removed");
-  await click("Mark reviewed");
+  await reviewViewed("Mark reviewed");
   assert.equal(await lineStats(), "6 lines added, 1 lines removed");
   assert.equal(await lineStats("Reviewed"), "0 lines added, 0 lines removed");
   await tree("shipping.ts");
   await wait(`${shadow}?.querySelector('[data-line-type="change-addition"]')`);
-  await click("Mark reviewed");
+  await reviewViewed("Mark reviewed");
   assert.match(await reviewedText(), /Commit message/);
   assert.match(await reviewedText(), /shipping.ts/);
   // The message moves between trees even when their file lists stay the same.
   await tree("Commit message");
   await wait(
-    `${shadow}?.querySelector('pre')?.textContent.includes('Charge 12 for international orders.') && !document.querySelector('.review-toggle').disabled`,
+    `${shadow}?.querySelector('pre')?.textContent.includes('Charge 12 for international orders.') && !${heading}.querySelector('.review-toggle').disabled`,
   );
-  await click("Mark unreviewed");
+  await reviewViewed("Mark unreviewed");
   assert.doesNotMatch(await reviewedText(), /Commit message/);
   assert.match(await sectionText("Unreviewed"), /Commit message/);
-  await click("Mark reviewed");
+  await reviewViewed("Mark reviewed");
   assert.match(await reviewedText(), /Commit message/);
   assert.doesNotMatch(await sectionText("Unreviewed"), /Commit message/);
   assert.equal(await lineStats(), "5 lines added, 0 lines removed");
@@ -1826,13 +1835,13 @@ try {
   );
   assert.equal(
     await evaluate(
-      "document.querySelector('.file-heading').lastElementChild.classList.contains('review-toggle')",
+      `${heading}.lastElementChild.classList.contains('review-toggle')`,
     ),
     true,
   );
   assert.equal(
     await evaluate(
-      "document.querySelector('.segmented').getBoundingClientRect().right < document.querySelector('.review-toggle').getBoundingClientRect().left",
+      `document.querySelector('.segmented').getBoundingClientRect().right < ${heading}.querySelector('.review-toggle').getBoundingClientRect().left`,
     ),
     true,
   );
@@ -1845,7 +1854,7 @@ try {
   await wait(
     `${shadow}?.querySelector('pre')?.textContent.includes('console.assert')`,
   );
-  await click("Mark reviewed");
+  await reviewViewed("Mark reviewed");
   await tree("shipping.ts");
   await wait(
     `${shadow}?.querySelector('pre')?.textContent.includes('const baseRate')`,
@@ -1854,7 +1863,7 @@ try {
   await wait(
     `${shadow}?.querySelector('pre')?.textContent.includes('console.assert')`,
   );
-  await click("Mark unreviewed");
+  await reviewViewed("Mark unreviewed");
   await browser("fill", '[aria-label="Find a file"]', "shipping.ts");
   await wait(
     "document.querySelector('section[aria-label=Reviewed] file-tree-container')?.shadowRoot?.querySelector('[role=treeitem]')",
@@ -1877,13 +1886,13 @@ try {
   );
   assert.equal(
     await evaluate(
-      "document.querySelector('.review-toggle').getAttribute('aria-pressed')",
+      `${heading}.querySelector('.review-toggle').getAttribute('aria-pressed')`,
     ),
     "true",
   );
   await tree("shipping.ts");
   await wait(`${shadow}?.querySelector('[data-line-type="change-addition"]')`);
-  await click("Mark unreviewed");
+  await reviewViewed("Mark unreviewed");
   assert.doesNotMatch(await reviewedText(), /shipping\.ts/);
   assert.match(await sectionText("Unreviewed"), /shipping\.ts/);
   assert.equal(await lineStats(), "6 lines added, 1 lines removed");
@@ -1900,10 +1909,10 @@ try {
   await browser("press", "Enter");
   await click("Compare");
   await wait(
-    "!Array.from(document.querySelectorAll('file-tree-container')).some(tree => tree.shadowRoot.querySelector('[role=treeitem][aria-label=\"Commit message\"]')) && !document.querySelector('.review-toggle').disabled",
+    `!Array.from(document.querySelectorAll('file-tree-container')).some(tree => tree.shadowRoot.querySelector('[role=treeitem][aria-label="Commit message"]')) && !${heading}.querySelector('.review-toggle').disabled`,
   );
   assert.equal(await reviewedText(), "");
-  await click("Mark reviewed");
+  await reviewViewed("Mark reviewed");
   assert.match(await reviewedText(), /shipping\.ts/);
   await reviewCommit(f.second);
   await wait(
@@ -1916,14 +1925,14 @@ try {
   await wait(
     `${shadow}?.querySelector('pre')?.textContent.includes('THRESHOLD = 75')`,
   );
-  await click("Mark reviewed");
+  await reviewViewed("Mark reviewed");
   assert.match(await reviewedText(), /shipping\.ts/);
   await reviewScope("Uncommitted changes");
   await wait(
     `${shadow}?.querySelector('pre')?.textContent.includes('pending = true')`,
   );
   assert.equal(await reviewedText(), "");
-  await click("Mark reviewed");
+  await reviewViewed("Mark reviewed");
   assert.match(await reviewedText(), /pending-after-load\.ts/);
   await browser("reload");
   await wait("document.querySelector('[aria-label=\"Review scope\"]')");
@@ -1978,7 +1987,7 @@ try {
   await browser("tab", "new", unusualURL);
   const commentTab = (await browser("tab", "list")).tabs.find((tab) => tab.tabId !== originalTab);
   await wait(`${shadow}?.querySelector('pre')?.textContent.includes('unusual = true')`);
-  assert.equal(await evaluate("document.querySelector('.file-path').textContent"), unusualPath);
+  assert.equal(await evaluate(`${heading}.querySelector('.file-path').textContent`), unusualPath);
   await line(1);
   await browser("fill", "#comment-text", "Keep this comment from the other tab.");
   await click("Add comment");
@@ -2005,7 +2014,7 @@ try {
   );
   await f.write("src/long.ts", `${longLines.join("\n")}\n`);
   await browser("open", `${url}/?mode=files&path=src%2Flong.ts`);
-  await wait("document.querySelector('.file-path')?.textContent === 'src/long.ts'");
+  await wait(`${heading}.querySelector('.file-path')?.textContent === 'src/long.ts'`);
   assert.equal(
     await evaluate(`${shadow}.textContent.includes('distantSearchTarget')`),
     false,
@@ -2127,6 +2136,40 @@ try {
   await wait("!document.querySelector('[role=dialog]') && document.querySelector('.copy').disabled");
   assert.equal(await evaluate("document.querySelectorAll('.comment').length"), 0);
   console.log("PASS copied prompt modal shows the prompt; Keep Comments preserves review state; Enter defaults to Clear");
+
+  const syncSource = (name) =>
+    Array.from({ length: 150 }, (_, i) => `export const ${name}${i} = ${i};`).join("\n") + "\n";
+  await f.write("sync/a.ts", syncSource("a"));
+  await f.write("sync/b.ts", syncSource("b"));
+  const syncHeader = (path) => `document.querySelector('.diff-file-heading[data-path="${path}"]')`;
+  const selectedTreeItem = "document.querySelector('section[aria-label=Unreviewed] file-tree-container').shadowRoot.querySelector('[role=treeitem][aria-selected=true]')?.getAttribute('aria-label')";
+  await browser("open", `${url}/?mode=working&path=sync%2Fa.ts`);
+  await wait(`${currentHeading}?.dataset.path === 'sync/a.ts'`);
+  const syncHistory = await evaluate("history.length");
+  await browser("focus", ".code-view");
+  for (let page = 0; page < 20 && await evaluate(`${currentHeading}.dataset.path`) === "sync/a.ts"; page++) {
+    await browser("press", "PageDown");
+    await evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
+  }
+  assert.equal(await evaluate(`${currentHeading}.dataset.path`), "sync/b.ts");
+  await wait(`${selectedTreeItem} === 'b.ts'`);
+  assert.equal(await evaluate("new URLSearchParams(location.search).get('path')"), "sync/b.ts");
+  assert.equal(await evaluate("history.length"), syncHistory, "Scrolling must not add history entries");
+  await tree("a.ts");
+  await wait(`${currentHeading}?.dataset.path === 'sync/a.ts' && Math.abs(${syncHeader("sync/a.ts")}.getBoundingClientRect().top - document.querySelector('.code-view').getBoundingClientRect().top) < 2`);
+  assert.equal(await evaluate(`getComputedStyle(${syncHeader("sync/a.ts")}).backgroundColor`), "rgb(255, 245, 220)");
+  await reviewViewed("Mark reviewed");
+  await wait(`${currentHeading}?.dataset.path === 'sync/b.ts' && ${selectedTreeItem} === 'b.ts'`);
+  await browser("focus", ".code-view");
+  await browser("press", "End");
+  await wait(`${syncHeader("sync/a.ts")}?.classList.contains('reviewed')`);
+  assert.equal(
+    await evaluate("[...document.querySelectorAll('.diff-file-heading')].sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top).at(-1).dataset.path"),
+    "sync/a.ts",
+    "Reviewed files follow every unreviewed file",
+  );
+  assert.equal(await evaluate(`getComputedStyle(${syncHeader("sync/a.ts")}).backgroundColor`), "rgb(239, 235, 250)");
+  console.log("PASS all diffs scroll together; the tree follows the top file without history entries; reviewed files move to a lavender section after amber unreviewed ones");
 
   const errors = await browser("errors");
   assert.deepEqual(errors.errors, []);

@@ -41,6 +41,17 @@ try {
   await browser("open", `http://127.0.0.1:${server.address().port}`);
   await browser("set", "viewport", "1440", "900", "2");
   await browser("wait", "[aria-label='Find a file']");
+  // The viewed file: in the all-files diff, the file whose header is current.
+  const defineViewed = `window.viewed = () => {
+    const heading = document.querySelector('.diff-file-heading[data-current]') ||
+      document.querySelector('.file-heading');
+    return {
+      path: heading?.querySelector('.file-path')?.textContent,
+      pre: (heading?.closest('diffs-container') || document.querySelector('diffs-container'))
+        ?.shadowRoot?.querySelector('pre'),
+    };
+  }`;
+  await evaluate(defineViewed);
   await evaluate(`(() => {
     window.highlightRequests = 0;
     const postMessage = Worker.prototype.postMessage;
@@ -53,8 +64,8 @@ try {
       document.body.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
       while (performance.now() - start < 10000) {
         await new Promise(requestAnimationFrame);
-        const pre = document.querySelector('diffs-container')?.shadowRoot?.querySelector('pre');
-        if (document.querySelector('.file-path')?.textContent === name + '.ts' &&
+        const { path, pre } = viewed();
+        if (path === name + '.ts' &&
             pre?.textContent.includes(name + '_0') && pre.querySelector('span[style]')) {
           return performance.now() - start;
         }
@@ -73,7 +84,7 @@ try {
       await browser("find", "role", "link", "click", "--name", "Split", "--exact");
     }
     await browser("find", "role", "treeitem", "click", "--name", "alpha.ts", "--exact");
-    await browser("wait", "--fn", "document.querySelector('diffs-container')?.shadowRoot?.querySelector('pre')?.textContent.includes('alpha_0')");
+    await browser("wait", "--fn", "viewed().pre?.textContent.includes('alpha_0')");
     const cold = await evaluate(`(async () => [
       await navigate('j', 'beta'), await navigate('j', 'gamma'), await navigate('j', 'alpha')
     ])()`);
@@ -106,13 +117,14 @@ try {
   // Clear all page caches, then navigate faster than cold highlighting completes.
   await browser("reload");
   await browser("wait", "[aria-label='Find a file']");
+  await evaluate(defineViewed);
   const rapid = await evaluate(`(async () => {
     const steps = [['j', 'beta'], ['j', 'gamma'], ['k', 'beta'], ['k', 'alpha'], ['k', 'gamma']];
     const times = [];
     for (const [key, name] of steps) {
       const start = performance.now();
       document.body.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
-      while (document.querySelector('.file-path')?.textContent !== name + '.ts') {
+      while (viewed().path !== name + '.ts') {
         if (performance.now() - start > 3000) throw new Error('Lost navigation key: ' + key);
         await new Promise(requestAnimationFrame);
       }
@@ -121,11 +133,11 @@ try {
     }
     return times;
   })()`);
-  await browser("wait", "--fn", "document.querySelector('diffs-container')?.shadowRoot?.querySelector('pre')?.textContent.includes('gamma_0')");
+  await browser("wait", "--fn", "viewed().pre?.textContent.includes('gamma_0')");
   // Let obsolete highlight responses arrive; they must not replace the last selection.
   await evaluate("new Promise(resolve => setTimeout(resolve, 1500))");
-  assert.equal(await evaluate("document.querySelector('.file-path').textContent"), "gamma.ts");
-  assert.equal(await evaluate("document.querySelector('diffs-container').shadowRoot.querySelector('pre').textContent.includes('gamma_0')"), true);
+  assert.equal(await evaluate("viewed().path"), "gamma.ts");
+  assert.equal(await evaluate("viewed().pre.textContent.includes('gamma_0')"), true);
   assert.ok(Math.max(...rapid) < 300, "Cold highlighting must not stall rapid j/k selection");
   console.log(`PASS rapid cold j/j/k/k/k navigation; slowest selection ${Math.round(Math.max(...rapid))} ms; no stale content`);
   assert.equal((await browser("errors")).errors?.length || 0, 0);

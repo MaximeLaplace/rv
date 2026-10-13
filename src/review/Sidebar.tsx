@@ -23,6 +23,7 @@ export function Sidebar({
   onCollapsedChange,
   onToggleReviewed,
   onToggleDirectoryReviewed,
+  revealSelected,
   treeOrder,
   onHide,
   onResize,
@@ -45,6 +46,7 @@ export function Sidebar({
   onCollapsedChange: Dispatch<SetStateAction<string[]>>;
   onToggleReviewed: (path: string) => void;
   onToggleDirectoryReviewed: (directory: string) => void;
+  revealSelected: boolean;
   // Visible file order of the unreviewed and reviewed trees, for J/K.
   treeOrder: RefObject<[string[], string[]]>;
   onHide: () => void;
@@ -182,6 +184,7 @@ export function Sidebar({
                 onToggleDirectoryReviewed={onToggleDirectoryReviewed}
                 search={search}
                 collapsed={collapsed}
+                reveal={revealSelected}
                 onCollapse={(path, closed) =>
                   onCollapsedChange((current) => closed
                     ? [...new Set([...current, path])]

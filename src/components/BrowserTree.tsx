@@ -58,6 +58,7 @@ export function BrowserTree({
   search,
   collapsed,
   onCollapse,
+  reveal,
 }: {
   paths: string[];
   entries: Entry[];
@@ -74,6 +75,8 @@ export function BrowserTree({
   search: string;
   collapsed: string[];
   onCollapse: (path: string, closed: boolean) => void;
+  // Scroll the selected file into view, as the all-files diff scrolls.
+  reveal: boolean;
 }) {
   const selectRef = useRef(onSelect);
   const hrefRef = useRef(fileHref);
@@ -203,7 +206,8 @@ export function BrowserTree({
     const item = model.getItem(treeSelected);
     if (item && !item.isSelected()) item.select();
     syncingSelection.current = false;
-  }, [model, selected, treePaths]);
+    if (item && reveal) model.scrollToPath(treeSelected, { offset: "nearest" });
+  }, [model, selected, treePaths, reveal]);
   useEffect(() => {
     // Pierre renders rows as buttons, with no link renderer. Intercept before
     // its selection handler so opening a tab leaves this tab untouched.

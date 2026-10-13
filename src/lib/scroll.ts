@@ -15,8 +15,12 @@ export function scrollStore(root: string) {
 }
 
 export function rememberScroll(root: string, key: string, element: HTMLElement) {
+  rememberPosition(root, key, { top: element.scrollTop, left: element.scrollLeft });
+}
+
+export function rememberPosition(root: string, key: string, position: ScrollPosition) {
   const positions = scrollStore(root);
-  positions[key] = { top: element.scrollTop, left: element.scrollLeft };
+  positions[key] = position;
   try {
     // Shared browser storage lets a modified click inherit the current position
     // immediately without exposing it in the URL or waiting for a server write.

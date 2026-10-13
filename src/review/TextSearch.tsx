@@ -27,7 +27,7 @@ export function useTextSearch({
   viewerMode,
   selected,
   viewer,
-  viewerContainer,
+  host,
 }: {
   fileSource: Source | undefined;
   fileDiff: FileDiffMetadata | null;
@@ -37,7 +37,8 @@ export function useTextSearch({
   viewerMode: ViewerMode;
   selected: string;
   viewer: RefObject<CodeViewHandle<Comment, undefined> | null>;
-  viewerContainer: RefObject<HTMLDivElement | null>;
+  // The viewed file's <diffs-container>.
+  host: () => Element | null | undefined;
 }) {
   const [open, setOpen] = useState(false);
   const [highlightSelectedText, setHighlightSelectedText] = useState(false);
@@ -53,9 +54,9 @@ export function useTextSearch({
 
   useEffect(() => {
     const onTextSelection = (event: Event) => {
-      const host = viewerContainer.current?.querySelector("diffs-container");
-      const shadow = host?.shadowRoot;
-      if (!host || !event.composedPath().includes(host)) return;
+      const container = host();
+      const shadow = container?.shadowRoot;
+      if (!container || !event.composedPath().includes(container)) return;
       const selection = (
         shadow as ShadowRoot & { getSelection?: () => Selection | null }
       )?.getSelection?.() || document.getSelection();
@@ -116,7 +117,7 @@ export function useTextSearch({
   useEffect(() => {
     clearHighlights();
     if ((!open && !highlightSelectedText) || !current) return;
-    const shadow = viewerContainer.current?.querySelector("diffs-container")?.shadowRoot;
+    const shadow = host()?.shadowRoot;
     if (!shadow) return;
     const style = document.createElement("style");
     style.textContent = highlightStyles;

@@ -53,6 +53,10 @@ choice in the URL (`view=diff`, `view=old`, or `view=new`). Comments on Old and
 New use that revision's line numbers. Split diffs and expanded unchanged lines
 are also preserved in links and browser history.
 
+**Diff** shows every changed file in one scroll: unreviewed files first, under
+amber headers, then reviewed files, under lavender headers. The file tree
+follows the file at the top as you scroll; selecting a file scrolls to it.
+
 Your review state (comments, reviewed marks, layout preferences) is cached on local
 disk, outside the repository, in one readable directory per opened path —
 `~/.cache/rv/--home-you-repo--/state.json` on Linux,

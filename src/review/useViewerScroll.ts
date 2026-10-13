@@ -10,17 +10,21 @@ export function useViewerScroll({
   content,
   container,
   interactionVersion,
+  disabled,
 }: {
   root: string;
   scrollKey: string;
   content: unknown;
   container: RefObject<HTMLElement | null>;
   interactionVersion: RefObject<number>;
+  // The all-files diff restores positions itself, relative to each file.
+  disabled: boolean;
 }) {
   const activeKey = useRef(scrollKey);
   activeKey.current = scrollKey;
   const explicitKey = useRef("");
   useEffect(() => {
+    if (disabled) return;
     let scroller: HTMLElement | null = null;
     const save = () => {
       if (scroller && activeKey.current === scrollKey)
@@ -61,7 +65,7 @@ export function useViewerScroll({
       cancelAnimationFrame(frame);
       if (listening && scroller) scroller.removeEventListener("scroll", save);
     };
-  }, [root, scrollKey, content]);
+  }, [root, scrollKey, content, disabled]);
   return () => {
     explicitKey.current = scrollKey;
   };
