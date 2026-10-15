@@ -502,20 +502,24 @@ export function Review({
     // Moving between files of the all-files diff keeps the search.
     contentKey: diffAll ? allKey : contentKey,
   });
-  const items = (diffAll
-    ? allContents ? order.map((path) => {
-        const shared = { id: path, annotations: annotationsFor(path), version: itemVersion.current };
-        if (isMessage(path)) return { ...shared, type: "file", file: messageContent?.newFile };
-        const notice = noticeFor(path);
-        // Files without a previewable diff show only their header.
-        return notice
-          ? { ...shared, type: "diff", collapsed: true,
-              fileDiff: parseDiff(diffKey(path), { oldFile: null, newFile: { name: path, contents: "" } }) }
-          : { ...shared, type: "diff", fileDiff: parseDiff(diffKey(path), allContents[path]) };
-      }) : []
-    : content && !notice && fileSource
-      ? [{ type: "file", file: fileSource, id: selected, annotations: annotationsFor(selected), version: itemVersion.current }]
-      : []) as CodeViewItem<Comment>[];
+  // Keep item objects stable across unrelated renders: CodeView resets its
+  // items when any item changes identity, and doing so while it renders (it
+  // flushes React updates mid-frame) drops a pending scrollTo, e.g. from J/K.
+  // Annotations follow comments through itemVersion.
+  const allItems = useMemo(() => diffAll && allContents ? order.map((path) => {
+    const shared = { id: path, annotations: annotationsFor(path), version: itemVersion.current };
+    if (isMessage(path)) return { ...shared, type: "file", file: messageContent?.newFile };
+    const notice = noticeFor(path);
+    // Files without a previewable diff show only their header.
+    return notice
+      ? { ...shared, type: "diff", collapsed: true,
+          fileDiff: parseDiff(diffKey(path), { oldFile: null, newFile: { name: path, contents: "" } }) }
+      : { ...shared, type: "diff", fileDiff: parseDiff(diffKey(path), allContents[path]) };
+  }) : [], [diffAll, allContents, order, messageContent, itemVersion.current]);
+  const fileItems = useMemo(() => !diffAll && content && !notice && fileSource
+    ? [{ type: "file", file: fileSource, id: selected, annotations: annotationsFor(selected), version: itemVersion.current }]
+    : [], [diffAll, content, notice, fileSource, selected, singleSide, itemVersion.current]);
+  const items = (diffAll ? allItems : fileItems) as CodeViewItem<Comment>[];
   const highlightedRange =
     highlight && matchesView(highlight) ? commentRange(highlight) : range;
   const highlightedPath = highlight && matchesView(highlight) ? highlight.path : rangePath;

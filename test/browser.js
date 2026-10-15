@@ -2189,6 +2189,21 @@ try {
   assert.equal(await evaluate(`getComputedStyle(${syncHeader("sync/a.ts")}).backgroundColor`), "rgb(239, 235, 250)");
   console.log("PASS all diffs scroll together; the tree follows the top file without history entries; reviewed files move to a lavender section after amber unreviewed ones");
 
+  // J/K scrolls to a file that is already in view below or above the top one.
+  // The top file is taller than CodeView's overscroll, so moving past it
+  // changes the rendered items while the scroll is pending.
+  await f.write("t/a.ts", syncSource("a").split("\n").slice(0, 12).join("\n") + "\n");
+  await f.write("t/b.ts", syncSource("b"));
+  const atTop = (path) => `${currentHeading}?.dataset.path === '${path}' && Math.abs(${syncHeader(path)}.getBoundingClientRect().top - document.querySelector('.code-view').getBoundingClientRect().top) < 2`;
+  await browser("open", `${url}/?mode=working&path=t%2Fa.ts`);
+  await wait(atTop("t/a.ts"));
+  assert.ok(await evaluate("document.querySelector('.code-view').scrollTop > 0"));
+  await browser("press", "j");
+  await wait(atTop("t/b.ts"));
+  await browser("press", "k");
+  await wait(atTop("t/a.ts"));
+  console.log("PASS j/k in the all-files diff scrolls the next file to the top even when it is already visible");
+
   const errors = await browser("errors");
   assert.deepEqual(errors.errors, []);
   console.log("PASS no browser errors\nBrowser verification complete.");
