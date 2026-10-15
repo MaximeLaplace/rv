@@ -135,9 +135,9 @@ export function rangeForMatch(
 
 export const highlightStyles = `::highlight(${textSearchMatchesHighlightName}) {
   color: inherit;
-  background: rgba(147, 157, 171, 0.35);
+  background: #80bfff33;
 }
 ::highlight(${textSearchHighlightName}) {
   color: inherit;
-  background: #ffd75e;
+  background: #736950;
 }`;

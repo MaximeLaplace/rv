@@ -402,8 +402,8 @@ export function Review({
   }, [singleSide]);
   const options = useMemo(
     () => ({
-      theme: "light-plus" as const,
-      themeType: "light" as const,
+      theme: "ayu-mirage" as const,
+      themeType: "dark" as const,
       diffStyle: split ? ("split" as const) : ("unified" as const),
       enableLineSelection: true,
       onLineSelected: (value: SelectedLineRange | null, context: { item: { id: string } }) =>

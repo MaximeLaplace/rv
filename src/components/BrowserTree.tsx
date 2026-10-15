@@ -17,13 +17,24 @@ const statuses: Record<string, GitStatus> = {
   T: "modified",
 };
 const treeStyle = themeToTreeStyles({
-  type: "light",
-  bg: "#f6f7f8",
-  fg: "#424750",
+  type: "dark",
+  bg: "#1f2430",
+  fg: "#c7cbd4",
   colors: {
-    "sideBar.background": "#f6f7f8",
-    "list.activeSelectionBackground": "#e1edfa",
-    "list.activeSelectionForeground": "#125eaa",
+    "sideBar.background": "#1f2430",
+    "sideBar.foreground": "#c7cbd4",
+    "sideBarSectionHeader.foreground": "#929eb0",
+    "sideBar.border": "#343c4d",
+    "list.hoverBackground": "#2c3343",
+    "list.activeSelectionBackground": "#343c4d",
+    "list.activeSelectionForeground": "#ffcc66",
+    "list.focusOutline": "#ffcc66",
+    "input.background": "#242936",
+    "scrollbarSlider.background": "#525e75",
+    "gitDecoration.addedResourceForeground": "#a8cc83",
+    "gitDecoration.modifiedResourceForeground": "#80bfff",
+    "gitDecoration.deletedResourceForeground": "#f28779",
+    "gitDecoration.untrackedResourceForeground": "#a8cc83",
   },
 });
 const inactiveTreeStyle = {

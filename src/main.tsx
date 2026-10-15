@@ -9,7 +9,7 @@ import type { Info, SavedState } from "./types";
 import "./style.css";
 
 const workerPoolOptions = { workerFactory: () => new DiffWorker(), poolSize: 2 };
-const highlighterOptions = { theme: "light-plus" as const };
+const highlighterOptions = { theme: "ayu-mirage" as const };
 
 function App() {
   const [loaded, setLoaded] = useState<{ info: Info; state: SavedState }>();

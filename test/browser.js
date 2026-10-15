@@ -2177,7 +2177,7 @@ try {
   assert.equal(await evaluate("history.length"), syncHistory, "Scrolling must not add history entries");
   await tree("a.ts");
   await wait(`${currentHeading}?.dataset.path === 'sync/a.ts' && Math.abs(${syncHeader("sync/a.ts")}.getBoundingClientRect().top - document.querySelector('.code-view').getBoundingClientRect().top) < 2`);
-  assert.equal(await evaluate(`getComputedStyle(${syncHeader("sync/a.ts")}).backgroundColor`), "rgb(255, 245, 220)");
+  assert.equal(await evaluate(`getComputedStyle(${syncHeader("sync/a.ts")}).backgroundColor`), "rgb(56, 51, 40)");
   await reviewViewed("Mark reviewed");
   await wait(`${currentHeading}?.dataset.path === 'sync/b.ts' && ${selectedTreeItem} === 'b.ts'`);
   await browser("focus", ".code-view");
@@ -2188,7 +2188,7 @@ try {
     "sync/a.ts",
     "Reviewed files follow every unreviewed file",
   );
-  assert.equal(await evaluate(`getComputedStyle(${syncHeader("sync/a.ts")}).backgroundColor`), "rgb(239, 235, 250)");
+  assert.equal(await evaluate(`getComputedStyle(${syncHeader("sync/a.ts")}).backgroundColor`), "rgb(48, 46, 67)");
   console.log("PASS all diffs scroll together; the tree follows the top file without history entries; reviewed files move to a lavender section after amber unreviewed ones");
 
   // J/K scrolls to a file that is already in view below or above the top one.
