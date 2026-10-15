@@ -108,7 +108,9 @@ export function rangeForMatch(
 ) {
   const lines = renderedLines.get(match.line) || [];
   const line = match.side
-    ? lines.find((candidate) => onSide(candidate, match.side!))
+    ? lines.find((candidate) => onSide(candidate, match.side!)) ||
+      // Unified diffs render context lines once, numbered as additions.
+      (match.side === "additions" ? lines.find((candidate) => !lineSide(candidate)) : undefined)
     : lines[0];
   if (!line) return null;
   const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);

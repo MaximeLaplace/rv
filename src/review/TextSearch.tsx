@@ -16,29 +16,31 @@ function clearHighlights() {
   CSS.highlights.delete(textSearchMatchesHighlightName);
 }
 
-// Find in the viewed file (Cmd/Ctrl+F), plus highlighting other occurrences of
-// text selected on a single line.
+// A file to search, in the order it is shown.
+export type TextSearchSource = {
+  path: string;
+  file?: Source;
+  diff?: FileDiffMetadata | null;
+};
+
+// Find (Cmd/Ctrl+F) in the viewed file, or in every file of the all-files
+// diff, plus highlighting other occurrences of text selected on a single line.
 export function useTextSearch({
-  fileSource,
-  fileDiff,
+  sources,
   split,
   expanded,
   contentKey,
   viewerMode,
   selected,
   viewer,
-  host,
 }: {
-  fileSource: Source | undefined;
-  fileDiff: FileDiffMetadata | null;
+  sources: TextSearchSource[];
   split: boolean;
   expanded: boolean;
   contentKey: string;
   viewerMode: ViewerMode;
   selected: string;
   viewer: RefObject<CodeViewHandle<Comment, undefined> | null>;
-  // The viewed file's <diffs-container>.
-  host: () => Element | null | undefined;
 }) {
   const [open, setOpen] = useState(false);
   const [highlightSelectedText, setHighlightSelectedText] = useState(false);
@@ -46,17 +48,19 @@ export function useTextSearch({
   const [active, setActive] = useState(0);
   const input = useRef<HTMLInputElement>(null);
   const selectedMatch = useRef<number | null>(null);
-  const matches = useMemo(
-    () => textSearchMatches(query, fileSource || null, fileDiff, split, expanded),
-    [query, fileSource, fileDiff, split, expanded],
-  );
+  const findAll = (text: string) => sources.flatMap(({ path, file, diff }) =>
+    textSearchMatches(text, file || null, diff || null, split, expanded)
+      .map((match) => ({ ...match, path })));
+  const matches = useMemo(() => findAll(query), [query, sources, split, expanded]);
   const current = matches[active];
+  // The rendered <diffs-container> of each file in the virtual window.
+  const hosts = () => viewer.current?.getInstance()?.getRenderedItems() || [];
 
   useEffect(() => {
     const onTextSelection = (event: Event) => {
-      const container = host();
-      const shadow = container?.shadowRoot;
-      if (!container || !event.composedPath().includes(container)) return;
+      const host = hosts().find((item) => event.composedPath().includes(item.element));
+      const shadow = host?.element.shadowRoot;
+      if (!host) return;
       const selection = (
         shadow as ShadowRoot & { getSelection?: () => Selection | null }
       )?.getSelection?.() || document.getSelection();
@@ -78,10 +82,9 @@ export function useTextSearch({
       beforeSelection.setEnd(range.startContainer, range.startOffset);
       const start = beforeSelection.toString().length;
       const side = lineSide(startLine);
-      const index = textSearchMatches(text, fileSource || null, fileDiff, split, expanded)
-        .findIndex((match) =>
-          match.line === Number(startLine.dataset.line) &&
-          match.start === start && match.side === side);
+      const index = findAll(text).findIndex((match) =>
+        match.path === host.id && match.line === Number(startLine.dataset.line) &&
+        match.start === start && match.side === side);
       if (index === -1) {
         setHighlightSelectedText(false);
         return;
@@ -98,17 +101,24 @@ export function useTextSearch({
       document.removeEventListener("pointerup", onTextSelection);
       document.removeEventListener("dblclick", onTextSelection);
     };
-  }, [fileSource, fileDiff, split, expanded]);
+  }, [sources, split, expanded]);
   useEffect(() => setHighlightSelectedText(false), [contentKey, viewerMode]);
   useEffect(() => {
-    setActive(selectedMatch.current ?? 0);
+    // Start at the first match in or after the selected file.
+    const after = new Set(sources
+      .slice(Math.max(0, sources.findIndex((source) => source.path === selected)))
+      .map((source) => source.path));
+    setActive(selectedMatch.current ??
+      Math.max(0, matches.findIndex((match) => after.has(match.path))));
     selectedMatch.current = null;
   }, [query, contentKey, viewerMode, split, expanded]);
   useEffect(() => {
-    if (!open || !current || !viewer.current) return;
+    // In the all-files diff, the viewed file follows the match first:
+    // re-rendering for a new selection would cancel an earlier scroll.
+    if (!open || !current || current.path !== selected || !viewer.current) return;
     viewer.current.scrollTo({
       type: "line",
-      id: selected,
+      id: current.path,
       lineNumber: current.line,
       side: current.side,
       align: "center",
@@ -117,42 +127,57 @@ export function useTextSearch({
   useEffect(() => {
     clearHighlights();
     if ((!open && !highlightSelectedText) || !current) return;
-    const shadow = host()?.shadowRoot;
-    if (!shadow) return;
-    const style = document.createElement("style");
-    style.textContent = highlightStyles;
-    shadow.append(style);
+    const styled = new Map<ShadowRoot, HTMLStyleElement>();
+    const observer = new MutationObserver(() => applyHighlights());
     const applyHighlights = () => {
       clearHighlights();
-      const renderedLines = new Map<number, HTMLElement[]>();
-      for (const line of shadow.querySelectorAll<HTMLElement>("[data-line]")) {
-        const number = Number(line.dataset.line);
-        renderedLines.set(number, [...renderedLines.get(number) || [], line]);
+      const renderedLines = new Map<string, Map<number, HTMLElement[]>>();
+      for (const host of hosts()) {
+        const shadow = host.element.shadowRoot;
+        if (!shadow) continue;
+        if (!styled.has(shadow)) {
+          const style = document.createElement("style");
+          style.textContent = highlightStyles;
+          shadow.append(style);
+          styled.set(shadow, style);
+          observer.observe(shadow, {
+            attributes: true,
+            characterData: true,
+            childList: true,
+            subtree: true,
+          });
+        }
+        const lines = new Map<number, HTMLElement[]>();
+        for (const line of shadow.querySelectorAll<HTMLElement>("[data-line]")) {
+          const number = Number(line.dataset.line);
+          lines.set(number, [...lines.get(number) || [], line]);
+        }
+        renderedLines.set(host.id, lines);
       }
+      const rangeFor = (match: typeof current) => {
+        const lines = renderedLines.get(match.path);
+        return lines ? rangeForMatch(match, lines) : null;
+      };
       const otherRanges = matches
         .filter((match) => match !== current)
-        .map((match) => rangeForMatch(match, renderedLines))
+        .map(rangeFor)
         .filter((range): range is Range => range !== null);
       if (otherRanges.length)
         CSS.highlights.set(textSearchMatchesHighlightName, new Highlight(...otherRanges));
-      const activeRange = rangeForMatch(current, renderedLines);
+      const activeRange = rangeFor(current);
       if (activeRange) CSS.highlights.set(textSearchHighlightName, new Highlight(activeRange));
     };
     applyHighlights();
     // CodeView first mounts plain text and later replaces it with highlighted
     // token nodes. It also replaces lines as they enter and leave the virtual
-    // window, so rebuild the Range after either kind of DOM change.
-    const observer = new MutationObserver(applyHighlights);
-    observer.observe(shadow, {
-      attributes: true,
-      characterData: true,
-      childList: true,
-      subtree: true,
-    });
+    // window, and mounts files as they scroll into view, so rebuild the Ranges
+    // after any of these DOM changes.
+    const container = viewer.current?.getInstance()?.getContainerElement();
+    if (container) observer.observe(container, { childList: true, subtree: true });
     return () => {
       observer.disconnect();
       clearHighlights();
-      style.remove();
+      for (const style of styled.values()) style.remove();
     };
   }, [open, highlightSelectedText, matches, current, contentKey, viewerMode]);
 

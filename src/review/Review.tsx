@@ -25,7 +25,7 @@ import { rememberPosition, scrollStore } from "../lib/scroll";
 import { compareTreePaths } from "../lib/sort";
 import type { Command } from "../lib/shortcuts";
 import { formatPrompt, reference } from "../prompt.js";
-import { TextSearchBar, useTextSearch } from "./TextSearch";
+import { TextSearchBar, useTextSearch, type TextSearchSource } from "./TextSearch";
 import { Sidebar } from "./Sidebar";
 import { CommentsPanel } from "./CommentsPanel";
 import { DiffFileHeader, FileHeading } from "./FileHeading";
@@ -456,19 +456,6 @@ export function Review({
     return diff;
   }
   const diffKey = (path: string) => JSON.stringify([allKey, path]);
-  const fileDiff = useMemo(() => {
-    if (!content || !diffAll || notice || isMessage(selected) ||
-        !(content.oldFile || content.newFile)) return null;
-    return parseDiff(diffKey(selected), content);
-  }, [content, selected, allKey, diffAll, notice]);
-  const find = useTextSearch({
-    fileSource: diffAll && isMessage(selected) ? content?.newFile : fileSource,
-    fileDiff, split, expanded, contentKey, viewerMode, selected, viewer,
-    host: () => diffAll
-      ? viewer.current?.getInstance()?.getRenderedItems()
-        .find((item) => item.id === selected)?.element
-      : viewerContainer.current?.querySelector("diffs-container"),
-  });
   const annotationsFor = (path: string) => comments
     .filter((comment) => comment.path === path && matchesView(comment))
     .map((comment) => ({
@@ -504,6 +491,17 @@ export function Review({
     return content.newFile?.notice || content.oldFile?.notice ||
       (!content.oldFile?.contents && !content.newFile?.contents ? "Empty file" : undefined);
   };
+  const viewedSources = useMemo(() => [{ path: selected, file: fileSource }], [selected, fileSource]);
+  // Find searches every file of the all-files diff, in display order.
+  const allSources = useMemo(() => allContents ? order.flatMap<TextSearchSource>((path) => isMessage(path)
+    ? [{ path, file: messageContent?.newFile }]
+    : noticeFor(path) ? [] : [{ path, diff: parseDiff(diffKey(path), allContents[path]) }])
+    : [], [allContents, order, messageContent]);
+  const find = useTextSearch({
+    sources: diffAll ? allSources : viewedSources, split, expanded, viewerMode, selected, viewer,
+    // Moving between files of the all-files diff keeps the search.
+    contentKey: diffAll ? allKey : contentKey,
+  });
   const items = (diffAll
     ? allContents ? order.map((path) => {
         const shared = { id: path, annotations: annotationsFor(path), version: itemVersion.current };
@@ -579,6 +577,13 @@ export function Review({
   const lastScrollTop = useRef(0);
   const live = useRef({ order, selected, findOpen: false });
   live.current = { order, selected, findOpen: find.open };
+  // The viewed file follows the current match of a search across files.
+  const findMatch = find.open ? find.matches[find.active] : undefined;
+  useEffect(() => {
+    if (!diffAll || !findMatch || findMatch.path === selected) return;
+    replaceURL.current = true;
+    setSelected(findMatch.path);
+  }, [findMatch]);
   function scrollToFile(path: string, offset = 0) {
     if (!viewer.current || !order.includes(path)) return;
     scrollIntent.current = false;

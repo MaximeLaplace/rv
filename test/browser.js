@@ -2094,6 +2094,24 @@ try {
   await browser("press", "Escape");
   console.log("PASS occurrence search preserves deletion/addition sides in split diffs");
 
+  // The all-files diff searches every file; the viewed file follows the match.
+  await f.write("src/cross-a.ts", "const a = 'crossFileTarget';\n");
+  await f.write("src/cross-b.ts", "// b\nconst b = 'crossFileTarget';\n");
+  await browser("open", `${url}/?mode=working&path=src%2Fcross-a.ts`);
+  await wait(`${currentHeading}?.dataset.path === 'src/cross-a.ts'`);
+  await browser("press", "Control+f");
+  await browser("fill", '[aria-label="Find in viewed file"]', "crossFileTarget");
+  await wait("document.querySelector('.text-search span')?.textContent === '1/2'");
+  assert.equal((await activeSearchHighlight()).line, 1);
+  await browser("press", "Enter");
+  await wait(`document.querySelector('.text-search span')?.textContent === '2/2' && ${currentHeading}?.dataset.path === 'src/cross-b.ts'`);
+  assert.equal((await activeSearchHighlight()).line, 2);
+  await browser("press", "Enter");
+  await wait(`document.querySelector('.text-search span')?.textContent === '1/2' && ${currentHeading}?.dataset.path === 'src/cross-a.ts'`);
+  assert.equal((await activeSearchHighlight()).line, 1);
+  await browser("press", "Escape");
+  console.log("PASS occurrence search in the all-files diff moves across files");
+
   // Selecting code uses occurrence highlighting without opening the find UI.
   // The selected occurrence, rather than the first source occurrence, stays active.
   await f.write(
