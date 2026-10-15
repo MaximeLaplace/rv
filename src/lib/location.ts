@@ -2,7 +2,7 @@ import type { Comparison, Info, ViewerMode } from "../types";
 
 const preferenceDefaults = {
   search: "",
-  wrap: false,
+  wrap: true,
   showFiles: true,
   showComments: true,
   filesWidth: 0,

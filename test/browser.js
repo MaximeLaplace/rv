@@ -612,19 +612,19 @@ try {
   await wait(`${shadow}?.querySelector('pre')?.textContent.includes('THRESHOLD = 75')`);
   assert.equal(
     await evaluate(`${shadow}.querySelector('pre').dataset.overflow`),
-    "scroll",
+    "wrap",
   );
   await click("Wrap long lines");
-  await wait(`${shadow}.querySelector('pre').dataset.overflow === 'wrap'`);
+  await wait(`${shadow}.querySelector('pre').dataset.overflow === 'scroll'`);
   assert.equal(
     await evaluate("document.querySelector('[aria-label=\"Wrap long lines\"]').getAttribute('aria-pressed')"),
-    "true",
+    "false",
   );
   await browser("press", "w");
-  await wait(`${shadow}.querySelector('pre').dataset.overflow === 'scroll'`);
-  await browser("press", "w");
   await wait(`${shadow}.querySelector('pre').dataset.overflow === 'wrap'`);
-  console.log("PASS long line wrapping toggles from the UI and W shortcut");
+  await browser("press", "w");
+  await wait(`${shadow}.querySelector('pre').dataset.overflow === 'scroll'`);
+  console.log("PASS long line wrapping is on by default and toggles from the UI and W shortcut");
   await browser("press", "l");
   await browser("wait", "#line-target");
   await capture("keyboard-line-picker");
@@ -766,8 +766,10 @@ try {
   await wait(`${shadow}?.querySelector('pre')?.textContent.includes('THRESHOLD = 75')`);
   assert.equal(
     await evaluate(`${shadow}.querySelector('pre').dataset.overflow`),
-    "wrap",
+    "scroll",
   );
+  await browser("press", "w");
+  await wait(`${shadow}.querySelector('pre').dataset.overflow === 'wrap'`);
   assert.match(await evaluate("document.querySelector('[aria-label=\"Review scope\"]').textContent"), /File Browser/);
   assert.equal(await evaluate(`${heading}.querySelector('.file-path').textContent`), "src/shipping.ts");
   await tree("src");
