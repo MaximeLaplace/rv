@@ -6,7 +6,7 @@ import {
   useState,
   type CSSProperties,
 } from "react";
-import { CodeView, type CodeViewHandle } from "@pierre/diffs/react";
+import { CodeView, type CodeViewHandle, type CodeViewReactOptions } from "@pierre/diffs/react";
 import {
   parseDiffFromFile,
   type CodeViewItem,
@@ -33,6 +33,7 @@ import { CopiedPromptDialog, LinePicker, PromptDialog } from "./Dialogs";
 import { useKeyboard } from "./useKeyboard";
 import { useViewerScroll } from "./useViewerScroll";
 import { useSavedState } from "./useSavedState";
+import codeStyles from "./code.css?inline";
 import {
   MESSAGE_PATH,
   type Comment,
@@ -113,6 +114,11 @@ export function Review({
   const [wrap, setWrap] = useState(saved.wrap);
   const [expanded, setExpanded] = useState(saved.expanded);
   const [range, setRange] = useState<SelectedLineRange | null>(null);
+  // Preview dragged ranges without mounting or focusing the comment composer.
+  const [linePreview, setLinePreview] = useState<{
+    id: string;
+    range: SelectedLineRange;
+  } | null>();
   // The file the line range belongs to; in the all-files diff it may differ
   // from the selected file.
   const [rangePath, setRangePath] = useState("");
@@ -138,10 +144,12 @@ export function Review({
   const cancelComment = () => {
     setEditing(undefined);
     setRange(null);
+    setLinePreview(undefined);
     setDraft("");
   };
   const clearSelection = () => {
     setRange(null);
+    setLinePreview(undefined);
     setHighlight(null);
     setPendingComment(null);
   };
@@ -427,14 +435,49 @@ export function Review({
         : value,
     );
   }, [singleSide]);
-  const options = useMemo(
+  const openLineComment = useCallback((value: SelectedLineRange, path: string) => {
+    if (editing) setDraft("");
+    setEditing(undefined);
+    onSelection(value, path);
+    requestAnimationFrame(() => {
+      document.getElementById("comment-text")?.focus({ preventScroll: true });
+    });
+  }, [editing, onSelection]);
+  const options = useMemo<CodeViewReactOptions<Comment, undefined>>(
     () => ({
       theme: "ayu-mirage" as const,
       themeType: "dark" as const,
       diffStyle: split ? ("split" as const) : ("unified" as const),
       enableLineSelection: true,
-      onLineSelected: (value: SelectedLineRange | null, context: { item: { id: string } }) =>
-        onSelection(value, context.item.id),
+      enableGutterUtility: true,
+      unsafeCSS: codeStyles,
+      onGutterUtilityClick: (value, { item }) => openLineComment(value, item.id),
+      onLineEnter: ({ numberElement }, { item, instance }) => {
+        const button = numberElement.querySelector<HTMLButtonElement>("[data-utility-button]");
+        if (!button) return;
+        button.setAttribute("aria-label", "Add line comment");
+        button.title = "Add comment · drag to select multiple lines";
+        // Pointer clicks and drags are handled by the viewer. Native keyboard
+        // and assistive clicks still need to open the same composer.
+        button.onclick = (event) => {
+          if (event.detail !== 0) return;
+          const hovered = instance.getHoveredLine();
+          if (!hovered) return;
+          const selection = viewer.current?.getSelectedLines();
+          openLineComment(selection?.id === item.id ? selection.range : {
+            start: hovered.lineNumber,
+            end: hovered.lineNumber,
+            ...("side" in hovered && (hovered.side === "additions" || hovered.side === "deletions")
+              ? { side: hovered.side } : {}),
+          }, item.id);
+        };
+      },
+      // Commit on release, keeping the composer (and its autofocus) out of
+      // the way while the viewer previews a dragged range.
+      onLineSelected: (value, { item }) => {
+        setLinePreview(undefined);
+        onSelection(value, item.id);
+      },
       itemMetrics: { lineHeight: 23, diffHeaderHeight: HEADER_HEIGHT },
       pointerEventsOnScroll: true,
       overflow: wrap ? ("wrap" as const) : ("scroll" as const),
@@ -443,7 +486,7 @@ export function Review({
       stickyHeaders: true,
       ...(diffAll ? { layout: { paddingTop: 0, paddingBottom: 0, gap: 0 } } : {}),
     }),
-    [split, wrap, expanded, onSelection, diffAll],
+    [split, wrap, expanded, onSelection, openLineComment, diffAll],
   );
   const prompt = formatPrompt(comments);
   const notice = diffAll
@@ -1064,13 +1107,11 @@ export function Review({
       items={items}
       options={options}
       selectedLines={
-        viewerRange
-          ? { id: highlightedPath, range: viewerRange }
-          : null
+        linePreview !== undefined
+          ? linePreview
+          : viewerRange ? { id: highlightedPath, range: viewerRange } : null
       }
-      onSelectedLinesChange={(selection) =>
-        onSelection(selection?.range || null, selection?.id)
-      }
+      onSelectedLinesChange={setLinePreview}
       onScroll={diffAll ? onViewerScroll : undefined}
       renderCustomHeader={diffAll ? (item) => (
         <DiffFileHeader
@@ -1270,6 +1311,7 @@ export function Review({
           )}
           <div
             className={`code-pane${diffAll ? " all-files" : ""}`}
+            onPointerCancel={() => setLinePreview(undefined)}
             key={diffAll
               ? `${tab}:${comparison.base}:${comparison.target}:${viewerMode}`
               : `${tab}:${selected}:${comparison.base}:${comparison.target}:${viewerMode}`}
@@ -1341,7 +1383,7 @@ export function Review({
             <span>
               {tab === "changes"
                 ? compareLabel
-                : "Click a line number to comment · Shift-click for a range"}
+                : "Click + to comment · Drag + to select a range"}
             </span>
             {range && (
               <span>
