@@ -67,6 +67,25 @@ export function Review({
   const [from, setFrom] = useState(saved.from);
   const [to, setTo] = useState(saved.to);
   const [comparison, setComparison] = useState<Comparison>(info.working);
+  const [totals, setTotals] = useState<{
+    info: Info;
+    counts?: Record<string, number | null>;
+    failed?: boolean;
+  }>();
+  const lineCounts = totals?.info === info ? totals.counts : undefined;
+  const lineCountsFailed = totals?.info === info && Boolean(totals.failed);
+  useEffect(() => {
+    let active = true;
+    // Metadata refreshes invalidate totals too; old responses cannot replace them.
+    const request = info.isGit && !info.working.entries.length
+      ? Promise.resolve({})
+      : api<Record<string, number | null>>("line-counts", { refresh: crypto.randomUUID() });
+    request.then(
+      (counts) => { if (active) setTotals({ info, counts }); },
+      () => { if (active) setTotals({ info, failed: true }); },
+    );
+    return () => { active = false; };
+  }, [info]);
   const compareLabel = comparison.mode === "working"
     ? "Uncommitted changes"
     : comparison.mode === "commit"
@@ -201,7 +220,15 @@ export function Review({
         : comparison.entries.map((entry) => entry.path),
     [tab, info.files, comparison],
   );
-  const entries = tab === "files" ? info.working.entries : comparison.entries;
+  const entries = useMemo(() => {
+    const current = tab === "files" ? info.working : comparison;
+    // Current-file totals can fill untracked additions, never historical stats.
+    return current.mode === "working" && lineCounts
+      ? current.entries.map((entry) => entry.status === "U"
+          ? { ...entry, additions: lineCounts[entry.path] ?? null }
+          : entry)
+      : current.entries;
+  }, [tab, info, comparison, lineCounts]);
   const isMessage = (path: string) =>
     tab === "changes" && path === MESSAGE_PATH && comparison.mode === "commit";
   // The commit message shown on its own; the all-files diff includes it.
@@ -1184,7 +1211,9 @@ export function Review({
           tab={tab}
           paths={paths}
           entries={entries}
-          lineCounts={info.lineCounts}
+          lineCounts={lineCounts}
+          lineCountsFailed={lineCountsFailed}
+          changedFilesOnly={info.isGit}
           hasMessage={hasMessage}
           reviewed={reviewedInView}
           reviewScope={reviewScope}

@@ -6,8 +6,11 @@ import path from "node:path";
 const exec = promisify(execFile);
 const MAX_FILE = 2 * 1024 * 1024;
 const split = (value) => value.split("\0").filter(Boolean);
-const countLines = (text) =>
-  text === "" ? 0 : text.split("\n").length - (text.endsWith("\n") ? 1 : 0);
+const countLines = (text) => {
+  let lines = 0;
+  for (let i = text.indexOf("\n"); i !== -1; i = text.indexOf("\n", i + 1)) lines++;
+  return lines + (text.length > 0 && !text.endsWith("\n") ? 1 : 0);
+};
 const unavailable = (name, notice) => ({ name, contents: "", notice });
 const TOO_LARGE = "File exceeds the 2 MiB preview limit.";
 
@@ -162,7 +165,7 @@ export async function repository(directory) {
     return paths.sort();
   }
 
-  async function compare(mode = "working", from = "", to = "") {
+  async function compare(mode = "working", from = "", to = "", countUntracked = true) {
     if (!isGit) return { mode: "working", base: "", target: "", entries: [] };
     let base, target;
     if (mode === "working") {
@@ -218,8 +221,8 @@ export async function repository(directory) {
       for (const name of split(
         await git("ls-files", "-z", "--others", "--exclude-standard"),
       )) {
-        // Reuse the preview's safety/size checks; unavailable text has no line total.
-        const source = await file(name).catch(() => null);
+        // Metadata can skip content reads; full comparisons retain exact counts.
+        const source = countUntracked ? await file(name).catch(() => null) : null;
         const text = source && !source.notice ? source.contents : null;
         const additions = text === null ? null : countLines(text);
         entries.push({ status: "U", path: name, additions, deletions: 0 });
@@ -260,22 +263,11 @@ export async function repository(directory) {
         branch = revision?.slice(0, 7) || "";
       }
     }
-    const fileList = await files();
-    // Line totals for the Files explorer, where change stats make no sense.
-    // Unavailable text (binary, oversized, symlinked) has no line total.
-    const lineCounts = {};
-    // Large checkouts can contain hundreds of thousands of files. Bound I/O
-    // rather than opening every file at once (and silently losing counts to EMFILE).
-    const pending = fileList.values();
-    await Promise.all(
-      Array.from({ length: Math.min(32, fileList.length) }, async () => {
-        for (const name of pending) {
-          const source = await file(name).catch(() => null);
-          lineCounts[name] =
-            source && !source.notice ? countLines(source.contents) : null;
-        }
-      }),
-    );
+    const [fileList, working] = await Promise.all([
+      files(),
+      // Untracked contents and line totals load separately, after the UI opens.
+      compare("working", "", "", false),
+    ]);
     return {
       root,
       name: path.posix.join(
@@ -286,10 +278,36 @@ export async function repository(directory) {
       branch,
       commits,
       files: fileList,
-      lineCounts,
-      working: await compare(),
+      working,
     };
   }
 
-  return { root, info, compare, file };
+  async function lineCounts() {
+    let names;
+    if (isGit) {
+      const base = (await head()) || (await emptyTree());
+      const [changed, untracked] = await Promise.all([
+        git("diff", "--relative", "--no-ext-diff", "--no-textconv", "--no-renames",
+          "--name-only", "-z", "--diff-filter=d", base, "--"),
+        git("ls-files", "-z", "--others", "--exclude-standard"),
+      ]);
+      names = [...new Set([...split(changed), ...split(untracked)])];
+    } else {
+      names = await files();
+    }
+    const counts = Object.create(null);
+    const pending = names.values();
+    // Bound file opens even when a large checkout has many changes.
+    await Promise.all(
+      Array.from({ length: Math.min(32, names.length) }, async () => {
+        for (const name of pending) {
+          const source = await file(name).catch(() => null);
+          counts[name] = source && !source.notice ? countLines(source.contents) : null;
+        }
+      }),
+    );
+    return counts;
+  }
+
+  return { root, info, compare, file, lineCounts };
 }

@@ -100,12 +100,13 @@ const currentHeading = "document.querySelector('.diff-file-heading[data-current]
 const heading = `(${currentHeading} || document.querySelector('.file-heading'))`;
 const headingLink = ".file-heading:not(.diff-file-heading) a.file-path, .diff-file-heading[data-current] a.file-path";
 const shadow = `(${currentHeading}?.closest('diffs-container') || document.querySelector('diffs-container'))?.shadowRoot`;
-const lineStats = (section = "Unreviewed") =>
-  evaluate(
-    section === "Unreviewed"
-      ? "document.querySelector('.sidebar-header .line-stats')?.getAttribute('aria-label')"
-      : `document.querySelector('section[aria-label="${section}"] .line-stats')?.getAttribute('aria-label')`,
-  );
+const lineStats = async (section = "Unreviewed") => {
+  const label = section === "Unreviewed"
+    ? "document.querySelector('.sidebar-header .line-stats')?.getAttribute('aria-label')"
+    : `document.querySelector('section[aria-label="${section}"] .line-stats')?.getAttribute('aria-label')`;
+  await wait(`(${label}) && (${label}) !== 'Counting lines…'`);
+  return evaluate(label);
+};
 async function resizePanel(side, delta) {
   const point = await evaluate(
     `(() => { const r = document.querySelector('.resize-handle.${side}').getBoundingClientRect(); return {x: Math.round(r.x + r.width / 2), y: Math.round(r.y + 100)}; })()`,
@@ -557,7 +558,7 @@ try {
   await wait("document.activeElement.getAttribute('aria-label') === 'Search review scopes'");
   await browser("press", "Escape");
   await wait("!document.querySelector('.review-popover')");
-  assert.equal(await lineStats(), "33 total lines of code");
+  assert.equal(await lineStats(), "24 total lines in changed and untracked files");
   assert.equal(
     await evaluate(
       "document.querySelector('.topbar [aria-controls=\"file-browser\"]')",
@@ -587,7 +588,7 @@ try {
     { outer: "none", inner: "none" },
   );
   await browser("fill", '[aria-label="Find a file"]', "shipping");
-  assert.equal(await lineStats(), "26 total lines of code");
+  assert.equal(await lineStats(), "21 total lines in changed and untracked files");
   await tree("shipping.ts");
   await wait(`${heading}.querySelector('.file-path').textContent === 'src/shipping.ts'`);
   await tree("shipping.ts");
@@ -780,7 +781,7 @@ try {
   const srcFolder = "document.querySelector('file-tree-container').shadowRoot.querySelector('[role=treeitem][aria-label=src]')";
   assert.equal(await evaluate(`${srcFolder}.getAttribute('aria-expanded')`), "false");
   await browser("fill", '[aria-label="Find a file"]', "shipping.ts");
-  assert.equal(await lineStats(), "21 total lines of code");
+  assert.equal(await lineStats(), "21 total lines in changed and untracked files");
   await browser("press", "Control+a");
   await browser("press", "Backspace");
   assert.equal(await evaluate(`${srcFolder}.getAttribute('aria-expanded')`), "false");
@@ -1403,7 +1404,7 @@ try {
   f.git("commit", "-qm", "Clean checkpoint");
   await browser("reload");
   await wait(
-    "document.querySelector('.sidebar-header')?.textContent.includes('Repository files')",
+    "document.querySelector('.sidebar-header strong')?.textContent === 'Files'",
   );
   await browser("press", "f");
   await browser("fill", '[aria-label="Fuzzy find file"]', "long.ts");

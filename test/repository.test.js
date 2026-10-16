@@ -22,7 +22,7 @@ test("working tree includes staged, unstaged, deleted and untracked changes, not
   await f.write("src/ignored/secret.txt", "not in the browser");
   assert.ok(!(await repo.info()).files.includes("ignored/secret.txt"));
   assert.deepEqual(info.working.entries, [
-    { path: "discount.ts", status: "U", additions: 3, deletions: 0 },
+    { path: "discount.ts", status: "U", additions: null, deletions: 0 },
     { path: "legacy.ts", status: "D", additions: 0, deletions: 1 },
     { path: "shipping.ts", status: "M", additions: 3, deletions: 3 },
   ]);
@@ -31,16 +31,20 @@ test("working tree includes staged, unstaged, deleted and untracked changes, not
   assert.deepEqual(commit.entries, [
     { path: "shipping.ts", status: "M", additions: 1, deletions: 1 },
   ]);
-  // The Files explorer shows total lines of code per current file,
-  // keyed like the file list, so scoped runs use scope-relative paths.
-  assert.ok(info.lineCounts["shipping.ts"] > 0);
-  assert.ok(!("legacy.ts" in info.lineCounts));
+  // Metadata opens without reading untracked contents or counting file lines.
+  assert.ok(!("lineCounts" in info));
+  const counts = await repo.lineCounts();
+  assert.deepEqual(Object.keys(counts).sort(), ["discount.ts", "shipping.ts"]);
+  assert.ok(counts["shipping.ts"] > 0);
+  assert.equal(counts["discount.ts"], 3);
+  assert.equal((await repo.compare()).entries.find((entry) => entry.status === "U").additions, 3);
   // A staged deletion stays reviewable but absent from Files; recreating it
   // makes it a current file again, even while its deletion remains staged.
   f.git("add", "src/legacy.ts");
   assert.ok(!(await repo.info()).files.includes("legacy.ts"));
   await f.write("src/legacy.ts", "recreated\n");
   assert.ok((await repo.info()).files.includes("legacy.ts"));
+  assert.equal((await repo.lineCounts())["legacy.ts"], 1);
   await rm(path.join(f.root, "src/legacy.ts"));
   const oldFile = await repo.file("shipping.ts", info.working.base);
   const newFile = await repo.file("shipping.ts");
@@ -75,12 +79,11 @@ test("repository metadata larger than 16 MiB is not truncated", async (t) => {
   const entries = new Map(info.working.entries.map((entry) => [entry.path, entry]));
   for (const name of names) {
     assert.ok(files.has(name));
-    assert.equal(info.lineCounts[name], null);
     assert.deepEqual(entries.get(name), {
       path: name, status: "A", additions: 3, deletions: 0,
     });
   }
-  assert.equal(info.lineCounts["README.md"], 3);
+  assert.ok(!("lineCounts" in info));
 });
 
 test("file line counts remain complete across a large batch of reads", async (t) => {
@@ -89,10 +92,17 @@ test("file line counts remain complete across a large batch of reads", async (t)
   const names = Array.from({ length: 1024 }, (_, i) => `batch/${i}.txt`);
   // Keep fixture creation bounded too, so this test works with low fd limits.
   for (const name of names) await f.write(name, "first\nlast");
+  const repo = await repository(f.root);
+  const counts = await repo.lineCounts();
+  for (const name of names) assert.equal(counts[name], 2, name);
+  assert.ok(!("README.md" in counts)); // Unchanged tracked files are never counted.
+  assert.ok(!("src/legacy.ts" in counts)); // Deleted files have no current total.
+  assert.ok(!("ignored/secret.txt" in counts));
   f.git("add", "batch");
   f.git("commit", "-qm", "Add batch");
-  const info = await (await repository(f.root)).info();
-  for (const name of names) assert.equal(info.lineCounts[name], 2, name);
+  assert.ok(!("batch/0.txt" in await repo.lineCounts()));
+  await f.write(names[0], "changed\n");
+  assert.equal((await repo.lineCounts())[names[0]], 1);
 });
 
 test("single commit, root commit and ranges use exact historical contents", async (t) => {
@@ -194,7 +204,7 @@ test("empty repositories work before the first commit, and refresh sees new chan
   assert.deepEqual((await repo.info()).working.entries, []);
   await f.write("new file.txt", "new\n");
   assert.deepEqual((await repo.info()).working.entries, [
-    { path: "new file.txt", status: "U", additions: 1, deletions: 0 },
+    { path: "new file.txt", status: "U", additions: null, deletions: 0 },
   ]);
 });
 
@@ -227,7 +237,7 @@ test("line counts preserve unusual paths and handle binary, empty and unterminat
     entries.find((e) => e.path === "untracked-binary.dat").additions,
     null,
   );
-  const lineCounts = (await repo.info()).lineCounts;
+  const lineCounts = await repo.lineCounts();
   assert.equal(lineCounts[name], 3);
   assert.equal(lineCounts["empty.txt"], 0);
   assert.equal(lineCounts["no-newline.txt"], 2);
@@ -254,6 +264,9 @@ test("paths, binary files, large files, symlinks and unusual filenames are handl
   await f.write("big.txt", "a".repeat(2 * 1024 * 1024 + 1));
   assert.match((await repo.file("binary.dat")).notice, /Binary/);
   assert.match((await repo.file("big.txt")).notice, /2 MiB/);
+  const counts = await repo.lineCounts();
+  for (const name of ["binary.dat", "big.txt", "escape", "git-alias"])
+    assert.equal(counts[name], null, name);
   for (const name of [
     "space name.txt",
     "-flag.txt",
@@ -382,12 +395,13 @@ test("ordinary folders and brand-new Git repositories with zero objects work", a
   const folder = await repository(root);
   assert.equal((await folder.info()).isGit, false);
   assert.deepEqual((await folder.info()).files, ["hello.txt"]);
+  assert.deepEqual(Object.entries(await folder.lineCounts()), [["hello.txt", 1]]);
   execFileSync("git", ["-C", root, "init", "-q"]);
   const repo = await repository(root);
   const info = await repo.info();
   assert.deepEqual(info.commits, []);
   assert.deepEqual(info.working.entries, [
-    { path: "hello.txt", status: "U", additions: 1, deletions: 0 },
+    { path: "hello.txt", status: "U", additions: null, deletions: 0 },
   ]);
   assert.equal(await repo.file("hello.txt", info.working.base), null);
   execFileSync("git", ["-C", root, "add", "hello.txt"]);

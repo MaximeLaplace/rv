@@ -540,6 +540,20 @@ button.panel-toggle:hover {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+.stats-spinner {
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid var(--border);
+  border-top-color: var(--muted);
+  border-radius: 50%;
+  animation: stats-spin 0.8s linear infinite;
+}
+@keyframes stats-spin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stats-spinner { animation: none; }
+}
 .lines-added {
   color: var(--success);
 }

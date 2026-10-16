@@ -10,6 +10,8 @@ export function Sidebar({
   paths,
   entries,
   lineCounts,
+  lineCountsFailed,
+  changedFilesOnly,
   hasMessage,
   reviewed = [],
   reviewScope,
@@ -32,7 +34,9 @@ export function Sidebar({
   tab: string;
   paths: string[];
   entries: Entry[];
-  lineCounts: Record<string, number | null>;
+  lineCounts?: Record<string, number | null>;
+  lineCountsFailed: boolean;
+  changedFilesOnly: boolean;
   hasMessage: boolean;
   reviewed?: string[];
   reviewScope: string;
@@ -69,22 +73,32 @@ export function Sidebar({
     treeOrder.current[1] = order;
   }, [treeOrder]);
   const fileSearch = search.trim().replaceAll("\\", "/").toLowerCase();
-  // The explorer lists current files, not changes: show their total size in
-  // lines instead of +/− change stats. Stats follow the file search.
+  // Stats follow the file search. Repository totals cover changed/untracked
+  // files only; unchanged files remain browsable without reading their contents.
   function groupStats(groupPaths: string[]) {
-    const visible = groupPaths.filter((path) => path.toLowerCase().includes(fileSearch));
+    const visible = new Set(groupPaths.filter((path) => path.toLowerCase().includes(fileSearch)));
     if (tab === "files") {
-      const missing = visible.some((path) => lineCounts[path] == null);
+      const counted = changedFilesOnly
+        ? [...new Set(entries.filter((entry) => entry.status !== "D" && visible.has(entry.path))
+            .map((entry) => entry.path))]
+        : [...visible];
+      const missing = counted.some((path) => lineCounts?.[path] == null);
       return {
-        lines: visible.reduce((sum, path) => sum + (lineCounts[path] || 0), 0),
-        title: `Total lines of code${missing ? "; excludes binary or unpreviewable files" : ""}`,
+        lines: counted.reduce((sum, path) => sum + (lineCounts?.[path] || 0), 0),
+        loading: counted.length > 0 && !lineCounts && !lineCountsFailed,
+        unavailable: counted.length > 0 && lineCountsFailed,
+        changedFilesOnly,
+        title: `${changedFilesOnly ? "Total lines in changed and untracked files only; unchanged files are not counted" : "Total lines of code"}${missing ? "; excludes binary or unpreviewable files" : ""}`,
       };
     }
-    const changes = entries.filter((entry) => visible.includes(entry.path));
+    const changes = entries.filter((entry) => visible.has(entry.path));
+    const pending = changes.some((entry) => entry.status === "U" && entry.additions == null);
     const missing = changes.some((entry) => entry.additions == null || entry.deletions == null);
     return {
       additions: changes.reduce((sum, entry) => sum + (entry.additions || 0), 0),
       deletions: changes.reduce((sum, entry) => sum + (entry.deletions || 0), 0),
+      loading: pending && !lineCounts && !lineCountsFailed,
+      unavailable: pending && lineCountsFailed,
       title: `Lines changed${missing ? "; excludes files with unavailable line counts (binary or unpreviewable text)" : ""}`,
     };
   }
@@ -98,7 +112,7 @@ export function Sidebar({
     >
       <PanelResizeHandle side="files" onResize={onResize} />
       <div className="sidebar-header">
-        <strong>{tab === "files" ? "Repository files" : "Changed files"}</strong>
+        <strong>{tab === "files" ? "Files" : "Changed files"}</strong>
         <span className="file-count">
           {paths.length + (hasMessage ? 1 : 0)}
         </span>
