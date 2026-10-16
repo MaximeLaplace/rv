@@ -31,6 +31,26 @@ const inactiveTreeStyle = {
   "--trees-focus-ring-color-override": "transparent",
 } as CSSProperties;
 
+type Stat = { additions: number; deletions: number };
+const compact = (n: number) =>
+  n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n);
+
+// Line change counts per file and summed per directory ("dir/" keys).
+function diffStats(entries: Entry[]) {
+  const stats = new Map<string, Stat>();
+  for (const entry of entries) {
+    const additions = entry.additions || 0, deletions = entry.deletions || 0;
+    if (!additions && !deletions) continue;
+    for (const key of [entry.path, ...directoryPaths([entry.path])]) {
+      const stat = stats.get(key) || { additions: 0, deletions: 0 };
+      stat.additions += additions;
+      stat.deletions += deletions;
+      stats.set(key, stat);
+    }
+  }
+  return stats;
+}
+
 export function directoryPaths(paths: string[]) {
   return [...new Set(
     paths.flatMap((path) => {
@@ -100,6 +120,8 @@ export function BrowserTree({
   selectRef.current = (path) => {
     if (treePaths.includes(path)) onSelect(fromTree(path));
   };
+  const statsRef = useRef(new Map<string, Stat>());
+  statsRef.current = useMemo(() => diffStats(entries), [entries]);
   const { model } = useFileTree({
     paths: treePaths,
     sort: (left, right) =>
@@ -140,7 +162,30 @@ export function BrowserTree({
         font-size: 13px;
         font-weight: 600;
       }
+      [data-item-section="decoration"] { flex: 1 0 auto; }
+      [data-item-section="decoration"] > span {
+        gap: 4px;
+        overflow: visible;
+        font-size: 11px;
+        font-variant-numeric: tabular-nums;
+      }
+      [data-item-section="decoration"] > span > span:empty { display: none; }
+      [data-item-type="folder"] > [data-item-section="decoration"] { opacity: 0.55; }
     `,
+    renderRowDecoration: ({ row }) => {
+      const stat = statsRef.current.get(
+        row.kind === "directory" ? row.path.replace(/\/?$/, "/") : row.path,
+      );
+      if (!stat) return null;
+      return {
+        text: "",
+        title: `${stat.additions} lines added, ${stat.deletions} lines removed`,
+        parts: [
+          { text: stat.additions ? `+${compact(stat.additions)}` : "", color: "#287541" },
+          { text: stat.deletions ? `−${compact(stat.deletions)}` : "", color: "#b33a3a" },
+        ],
+      };
+    },
     gitStatus: entries.map((entry) => ({
       path: entry.path,
       status: statuses[entry.status] || "modified",
