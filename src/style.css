@@ -1091,24 +1091,6 @@ diffs-container {
   box-shadow: 0 0 0 3px var(--focus-ring);
   outline: none;
 }
-.comment-empty {
-  margin: 33px 8px;
-}
-.comment-icon {
-  font-size: 25px;
-  color: var(--muted);
-}
-.comment-empty h3 {
-  font-size: 13px;
-  font-weight: 500;
-  margin-top: 17px;
-  color: var(--secondary);
-}
-.comment-empty p {
-  font-size: 12px;
-  line-height: 1.85;
-  color: var(--muted);
-}
 .comment {
   margin-bottom: 14px;
   background: var(--surface);

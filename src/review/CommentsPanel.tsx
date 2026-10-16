@@ -19,9 +19,7 @@ export function CommentsPanel({
   onGeneralDraftChange,
   onSaveGeneral,
   newComment,
-  selecting,
   errors,
-  agent,
   onPreview,
   onHide,
   onResize,
@@ -43,9 +41,7 @@ export function CommentsPanel({
   onSaveGeneral: () => void;
   // The composer for a new comment on the selected lines.
   newComment: { reference: string; oldSide: boolean } | null;
-  selecting: boolean;
   errors: string[];
-  agent: boolean;
   onPreview: () => void;
   onHide: () => void;
   onResize: (width: number) => void;
@@ -107,16 +103,6 @@ export function CommentsPanel({
         {errors.filter(Boolean).map((message) => (
           <p role="alert" className="error" key={message}>{message}</p>
         ))}
-        {!comments.length && !selecting && (
-          <div className="comment-empty">
-            <span className="comment-icon">▤</span>
-            <h3>Your thoughts, ready for an agent.</h3>
-            <p>
-              Select a line in the code to add a comment. Collect your
-              feedback here, then {agent ? "submit" : "copy"} it as one prompt.
-            </p>
-          </div>
-        )}
         {comments.map((comment, index) => (
           <article
             className={`comment${comment.general ? " general" : ""}${highlight?.id === comment.id ? " highlighted" : ""}`}

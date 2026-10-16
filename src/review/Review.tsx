@@ -1426,9 +1426,7 @@ export function Review({
             }),
             oldSide: range.side === "deletions",
           } : null}
-          selecting={!!range}
           errors={[copyError, submitError, storageError]}
-          agent={info.agent}
           onPreview={() => setDialog("prompt")}
           onHide={() => setShowComments(false)}
           onResize={setCommentsWidth}
