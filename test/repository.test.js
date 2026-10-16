@@ -83,6 +83,18 @@ test("repository metadata larger than 16 MiB is not truncated", async (t) => {
   assert.equal(info.lineCounts["README.md"], 3);
 });
 
+test("file line counts remain complete across a large batch of reads", async (t) => {
+  const f = await fixture();
+  t.after(f.cleanup);
+  const names = Array.from({ length: 1024 }, (_, i) => `batch/${i}.txt`);
+  // Keep fixture creation bounded too, so this test works with low fd limits.
+  for (const name of names) await f.write(name, "first\nlast");
+  f.git("add", "batch");
+  f.git("commit", "-qm", "Add batch");
+  const info = await (await repository(f.root)).info();
+  for (const name of names) assert.equal(info.lineCounts[name], 2, name);
+});
+
 test("single commit, root commit and ranges use exact historical contents", async (t) => {
   const f = await fixture();
   t.after(f.cleanup);

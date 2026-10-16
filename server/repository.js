@@ -264,11 +264,16 @@ export async function repository(directory) {
     // Line totals for the Files explorer, where change stats make no sense.
     // Unavailable text (binary, oversized, symlinked) has no line total.
     const lineCounts = {};
+    // Large checkouts can contain hundreds of thousands of files. Bound I/O
+    // rather than opening every file at once (and silently losing counts to EMFILE).
+    const pending = fileList.values();
     await Promise.all(
-      fileList.map(async (name) => {
-        const source = await file(name).catch(() => null);
-        lineCounts[name] =
-          source && !source.notice ? countLines(source.contents) : null;
+      Array.from({ length: Math.min(32, fileList.length) }, async () => {
+        for (const name of pending) {
+          const source = await file(name).catch(() => null);
+          lineCounts[name] =
+            source && !source.notice ? countLines(source.contents) : null;
+        }
       }),
     );
     return {
