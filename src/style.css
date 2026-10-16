@@ -963,16 +963,6 @@ diffs-container {
     11px/18px system-ui,
     sans-serif;
 }
-.code-footer {
-  background: var(--chrome);
-  border-top: 1px solid var(--border);
-  padding: 9px 18px;
-  font-size: 10px;
-  color: var(--muted);
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-}
 .empty {
   display: flex;
   flex-direction: column;
@@ -1221,31 +1211,6 @@ diffs-container {
 }
 .composer-actions button {
   font-size: 10px;
-}
-.statusbar {
-  height: 27px;
-  flex-shrink: 0;
-  border-top: 1px solid var(--border);
-  background: var(--chrome);
-  color: var(--muted);
-  display: flex;
-  align-items: center;
-  gap: 23px;
-  padding: 0 17px;
-  font-size: 10px;
-}
-.status-right {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 9px;
-}
-.status-dot {
-  background: var(--muted);
-  width: 3px;
-  height: 3px;
-  border-radius: 50%;
 }
 .error {
   color: var(--danger);

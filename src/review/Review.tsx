@@ -44,7 +44,6 @@ import {
   type ViewerMode,
 } from "../types";
 
-declare const __RV_VERSION__: string;
 // Matches .diff-file-heading; CodeView reserves this much for each header.
 const HEADER_HEIGHT = 44;
 const SCROLL_KEYS = ["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "];
@@ -1379,20 +1378,6 @@ export function Review({
               )
             )}
           </div>
-          <div className="code-footer">
-            <span>
-              {tab === "changes"
-                ? compareLabel
-                : "Click + to comment · Drag + to select a range"}
-            </span>
-            {range && (
-              <span>
-                Ln {start}
-                {end !== start ? `–${end}` : ""}
-                {range.side === "deletions" ? " · old side" : ""}
-              </span>
-            )}
-          </div>
         </main>
         <CommentsPanel
           comments={comments}
@@ -1444,17 +1429,6 @@ export function Review({
           </button>
         </div>
       </div>
-      <footer className="statusbar">
-        <span>⑂ {info.branch || "Files"}</span>
-        <span>{info.isGit ? "Git" : "Folder"} · read-only</span>
-        <span className="status-right">
-          No auto-refresh
-          <span className="status-dot" />
-          Refresh when you’re ready.
-          <span className="status-dot" />
-          rv {__RV_VERSION__}
-        </span>
-      </footer>
       {dialog === "prompt" && (
         <PromptDialog
           prompt={prompt}

@@ -20,17 +20,6 @@ const session = (
     "rv-test",
   ])
 ).stdout.trim();
-const rvRoot = path.resolve(import.meta.dirname, "..");
-let rvVersion;
-try {
-  rvVersion = (
-    await exec("git", ["-C", rvRoot, "describe", "--tags", "--exact-match", "HEAD"])
-  ).stdout.trim();
-} catch {
-  rvVersion = (
-    await exec("git", ["-C", rvRoot, "rev-parse", "--short", "HEAD"])
-  ).stdout.trim();
-}
 const f = await fixture();
 const server = createApp(await repository(f.root));
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -480,13 +469,8 @@ try {
   assert.equal(await evaluate("Boolean(document.querySelector('.viewer-modes'))"), false);
   console.log("PASS Diff/Old/New show exact revisions, preserve mode in header links/reloads/history, keep comments on their side and handle added/deleted files");
 
-  assert.equal(
-    await evaluate(
-      `document.querySelector('.status-right').textContent.trim().endsWith(${JSON.stringify(`rv ${rvVersion}`)})`,
-    ),
-    true,
-  );
-  console.log("PASS status bar shows the rv version");
+  assert.equal(await evaluate("Boolean(document.querySelector('.statusbar, .code-footer'))"), false);
+  console.log("PASS review has no bottom footers");
   await hoverTree("README.md");
   await wait(
     "document.querySelector('section[aria-label=Unreviewed] file-tree-container').hasAttribute('data-file-review-action') && document.querySelector('section[aria-label=Unreviewed] file-tree-container').shadowRoot.querySelector('[aria-label=\"Mark reviewed\"][data-visible=true]')",
@@ -1118,11 +1102,7 @@ try {
   await wait(`${shadow}?.querySelector('[data-diff-type="split"]')`);
   console.log("PASS reload restores a non-default commit, its selected file and split layout");
   await reviewCommit(f.first);
-  await wait(
-    "document.querySelector('.code-footer').textContent.includes('Commit " +
-      f.first.slice(0, 7) +
-      "')",
-  );
+  await wait("document.querySelector('[aria-label=\"Review scope\"]').textContent.includes('Add shipping calculator')");
   await wait(
     `${shadow}?.querySelector('pre')?.textContent.includes('Add shipping calculator')`,
   );
@@ -1227,8 +1207,8 @@ try {
     false,
   );
   assert.equal(
-    await evaluate("document.querySelector('.code-footer').textContent.trim()"),
-    `Commit ${f.first.slice(0, 7)}`,
+    await evaluate("document.querySelector('[aria-label=\"Review scope\"] strong').textContent"),
+    "Add shipping calculator",
   );
   await browser("set", "viewport", "1000", "800", "2");
   await reviewRange();
@@ -1244,7 +1224,7 @@ try {
   await browser("set", "viewport", "1440", "900", "2");
   await browser("reload");
   await wait(`${shadow}?.querySelector('pre')?.textContent.includes('const baseRate = 5')`);
-  assert.equal(await evaluate("document.querySelector('.code-footer').textContent.trim()"), `Commit ${f.first.slice(0, 7)}`);
+  assert.equal(await evaluate("document.querySelector('[aria-label=\"Review scope\"] strong').textContent"), "Add shipping calculator");
   assert.match(await evaluate("document.querySelector('[aria-label=\"Review scope\"]').textContent"), /Add shipping calculator/);
   await reviewRange();
   assert.match(await evaluate("document.querySelector('[aria-label=\"Target revision\"]').textContent"), /Add shipping calculator/);
@@ -1266,7 +1246,7 @@ try {
   await browser("reload");
   await wait(`${shadow}?.querySelector('pre')?.textContent.includes('THRESHOLD = 100')`);
   assert.equal(await evaluate("document.querySelector('[aria-label=\"Find a file\"]').value"), "shipping.ts");
-  assert.equal(await evaluate("document.querySelector('.code-footer').textContent.trim()"), `${f.first.slice(0, 7)} → ${f.third.slice(0, 7)}`);
+  assert.equal(await evaluate("document.querySelector('[aria-label=\"Review scope\"] strong').textContent"), `${f.first.slice(0, 7)} → ${f.third.slice(0, 7)}`);
   assert.equal(await evaluate(`${heading}.querySelector('.file-path').textContent`), "src/shipping.ts");
   assert.doesNotMatch(await codeText(), /THRESHOLD = 75/);
   await browser("focus", '[aria-label="Find a file"]');

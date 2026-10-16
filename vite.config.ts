@@ -1,22 +1,7 @@
-import { execFileSync } from "node:child_process";
 import { gzipSync } from "node:zlib";
 import { defineConfig } from "vite";
 
-function version() {
-  try {
-    return execFileSync("git", ["describe", "--tags", "--exact-match", "HEAD"], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
-  } catch {
-    return execFileSync("git", ["rev-parse", "--short", "HEAD"], {
-      encoding: "utf8",
-    }).trim();
-  }
-}
-
 export default defineConfig({
-  define: { __RV_VERSION__: JSON.stringify(version()) },
   plugins: [{
     name: "precompress-assets",
     generateBundle: {
