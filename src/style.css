@@ -9,24 +9,28 @@
   background: var(--background);
   font-synthesis: none;
   color-scheme: dark;
-  /* Ayu Mirage: cool, layered surfaces with restrained warm accents. */
+  /* Ayu Mirage: a recessed frame, clear header bands, and lifted content. */
   --background: #242936;
-  --panel: #1f2430;
-  --surface: #282e3b;
-  --hover: #343c4d;
-  --border: #343c4d;
-  --control-border: #465168;
+  --chrome: #171c27;
+  --panel: #1b2230;
+  --header: #2c3546;
+  --surface: #2d3749;
+  --overlay: #354055;
+  --input: #171e2b;
+  --hover: #3a465d;
+  --border: #3e4a61;
+  --control-border: #526079;
   --text: #d9d7ce;
   --secondary: #b8bfcc;
-  --muted: #929eb0;
+  --muted: #a2aec0;
   --accent: #ffcc66;
   --accent-hover: #f9c55d;
   --accent-text: #242936;
   --accent-soft: #383328;
   --accent-border: #554a35;
   --link: #80bfff;
-  --selection: #2d3b50;
-  --selection-border: #4b6586;
+  --selection: #2e425a;
+  --selection-border: #6484ad;
   --focus-ring: #ffcc6633;
   --reviewed: #c4a7e7;
   --reviewed-soft: #302e43;
@@ -99,13 +103,13 @@ select {
   border-radius: 5px;
   padding: 6px 9px;
   color: var(--text);
-  background: var(--background);
+  background: var(--input);
   font-size: 12px;
   min-width: 0;
 }
 textarea {
   color: var(--text);
-  background: var(--background);
+  background: var(--input);
   caret-color: var(--accent);
 }
 input {
@@ -130,7 +134,7 @@ code {
   flex-direction: column;
 }
 .topbar {
-  background: var(--panel);
+  background: var(--chrome);
   height: 64px;
   flex-shrink: 0;
   border-bottom: 1px solid var(--border);
@@ -206,7 +210,7 @@ code {
   width: min(540px, calc(100vw - 40px));
   padding: 10px;
   z-index: 8;
-  background: var(--surface);
+  background: var(--overlay);
   border: 1px solid var(--control-border);
   border-radius: 7px;
   box-shadow: 0 10px 28px var(--shadow);
@@ -218,7 +222,7 @@ code {
   border: 1px solid var(--control-border);
   border-radius: 5px;
   color: var(--muted);
-  background: var(--background);
+  background: var(--input);
 }
 .review-search:focus-within {
   outline: 2px solid var(--accent);
@@ -253,6 +257,7 @@ code {
   gap: 10px;
   padding: 7px 8px;
   border: 0;
+  background: transparent;
   text-align: left;
 }
 .review-options > button:hover,
@@ -481,6 +486,7 @@ button.panel-toggle:hover {
   min-height: 0;
 }
 .sidebar-header {
+  background: var(--header);
   display: flex;
   height: var(--panel-header-height);
   border-bottom: 1px solid var(--border);
@@ -567,7 +573,7 @@ button.panel-toggle:hover {
   align-items: center;
   flex: 1;
   min-width: 0;
-  background: var(--background);
+  background: var(--input);
   border: 1px solid var(--control-border);
   border-radius: 5px;
   padding-left: 9px;
@@ -617,6 +623,7 @@ button.panel-toggle:hover {
   color: var(--muted);
 }
 .main {
+  background: var(--background);
   grid-column: 2;
   min-width: 0;
   min-height: 0;
@@ -677,7 +684,7 @@ button.panel-toggle:hover {
   width: min(410px, calc(100vw - 40px));
   padding: 10px;
   z-index: 5;
-  background: var(--surface);
+  background: var(--overlay);
   border: 1px solid var(--control-border);
   border-radius: 6px;
   box-shadow: 0 8px 24px var(--shadow);
@@ -701,6 +708,7 @@ button.panel-toggle:hover {
   gap: 10px;
   padding: 9px 8px;
   border: 0;
+  background: transparent;
   text-align: left;
 }
 .commit-options button span {
@@ -720,6 +728,7 @@ button.panel-toggle:hover {
   color: var(--muted);
 }
 .file-heading {
+  background: var(--header);
   display: flex;
   flex-wrap: wrap;
   flex-shrink: 0;
@@ -738,7 +747,7 @@ button.panel-toggle:hover {
   align-items: center;
   gap: 4px;
   padding: 5px;
-  background: var(--surface);
+  background: var(--overlay);
   border: 1px solid var(--control-border);
   border-radius: 6px;
   box-shadow: 0 5px 18px var(--shadow);
@@ -914,6 +923,11 @@ button.panel-toggle:hover {
   height: 100%;
   overflow: auto;
 }
+/* Keep the viewer on the editor surface, not the theme's sidebar fallback. */
+diffs-container {
+  --diffs-bg: var(--background);
+  --diffs-bg-separator-override: var(--header);
+}
 .code-view:focus {
   outline: none;
 }
@@ -936,6 +950,7 @@ button.panel-toggle:hover {
     sans-serif;
 }
 .code-footer {
+  background: var(--chrome);
   border-top: 1px solid var(--border);
   padding: 9px 18px;
   font-size: 10px;
@@ -995,6 +1010,7 @@ button.panel-toggle:hover {
   min-height: 0;
 }
 .panel-heading {
+  background: var(--header);
   display: flex;
   flex-shrink: 0;
   align-items: center;
@@ -1214,7 +1230,7 @@ button.panel-toggle:hover {
   height: 27px;
   flex-shrink: 0;
   border-top: 1px solid var(--border);
-  background: var(--panel);
+  background: var(--chrome);
   color: var(--muted);
   display: flex;
   align-items: center;
@@ -1270,7 +1286,7 @@ button.panel-toggle:hover {
   max-height: min(610px, 76vh);
   display: flex;
   flex-direction: column;
-  background: var(--surface);
+  background: var(--overlay);
   border: 1px solid var(--control-border);
   border-radius: 10px;
   overflow: hidden;
@@ -1290,7 +1306,7 @@ button.panel-toggle:hover {
   border: 1px solid var(--control-border);
   border-radius: 7px;
   color: var(--muted);
-  background: var(--background);
+  background: var(--input);
 }
 .finder-search:focus-within {
   outline: 2px solid var(--accent);
@@ -1367,7 +1383,7 @@ button.panel-toggle:hover {
 }
 .prompt-dialog {
   width: min(650px, 90vw);
-  background: var(--surface);
+  background: var(--overlay);
   border: 1px solid var(--control-border);
   border-radius: 9px;
   overflow: hidden;
@@ -1377,7 +1393,7 @@ button.panel-toggle:hover {
 .line-dialog {
   width: min(600px, 90vw);
   max-height: min(720px, 88vh);
-  background: var(--surface);
+  background: var(--overlay);
   border: 1px solid var(--control-border);
   border-radius: 10px;
   overflow: hidden;
@@ -1411,7 +1427,7 @@ button.panel-toggle:hover {
   border: 1px solid var(--control-border);
   border-radius: 6px;
   color: var(--muted);
-  background: var(--background);
+  background: var(--input);
 }
 .shortcut-search:focus-within {
   outline: 2px solid var(--accent);
