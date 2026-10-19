@@ -39,6 +39,13 @@ export async function repository(directory) {
     isGit = false;
   }
 
+  // The first worktree is the main checkout, even when Git stores its metadata
+  // outside that checkout. NUL-delimited output keeps unusual paths intact.
+  const mainRoot = isGit
+    ? split(await git("worktree", "list", "--porcelain", "-z"))[0].slice("worktree ".length)
+    : root;
+  const isWorktree = isGit && mainRoot !== gitRoot;
+
   async function resolve(ref) {
     if (!ref || ref.length > 256)
       throw new Error("Enter a valid commit or branch.");
@@ -271,9 +278,9 @@ export async function repository(directory) {
     return {
       root,
       name: path.posix.join(
-        path.basename(gitRoot),
+        path.basename(mainRoot),
         path.relative(gitRoot, root).split(path.sep).join("/"),
-      ),
+      ) + (isWorktree ? " (worktree)" : ""),
       isGit,
       branch,
       commits,

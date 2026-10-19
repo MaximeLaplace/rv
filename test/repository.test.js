@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { get } from "node:http";
-import { mkdtemp, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
@@ -56,6 +56,25 @@ test("working tree includes staged, unstaged, deleted and untracked changes, not
     (await repo.file("legacy.ts", info.working.base)).contents,
     "export const freeShipping = false;\n",
   );
+});
+
+test("linked worktrees use the main checkout name and preserve the opened path", async (t) => {
+  const f = await fixture();
+  t.after(f.cleanup);
+  const dir = await mkdtemp(path.join(tmpdir(), "rv-worktree-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  // Keep the worktree directory unrelated to the main checkout's name.
+  const worktree = path.join(dir, "topic checkout");
+  f.git("worktree", "add", "--quiet", "--detach", worktree);
+  const name = path.basename(f.root);
+  assert.equal((await (await repository(f.root)).info()).name, name);
+  for (const subdir of ["", "src"]) {
+    const root = await realpath(path.join(worktree, subdir));
+    const info = await (await repository(root)).info();
+    assert.equal(info.name, `${path.posix.join(name, subdir)} (worktree)`);
+    assert.equal(info.root, root); // The native tooltip uses the full opened path.
+    assert.equal(info.isGit, true);
+  }
 });
 
 test("repository metadata larger than 16 MiB is not truncated", async (t) => {
