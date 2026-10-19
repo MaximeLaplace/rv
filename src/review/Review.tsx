@@ -569,6 +569,10 @@ export function Review({
     const all = [...(hasMessage ? [MESSAGE_PATH] : []), ...[...paths].sort(compareTreePaths)];
     return [...all.filter((path) => !done(path)), ...all.filter(done)];
   }, [diffAll, hasMessage, paths, reviewedInView]);
+  // CodeView's rendered range is index-based: moving mounted items outside
+  // that range leaves stale elements behind. Recreate it only when the order
+  // changes, then restore the selected file's relative scroll position below.
+  const viewerOrderKey = JSON.stringify(order);
   const noticeFor = (path: string) => {
     const content = allContents?.[path];
     if (!content || isMessage(path)) return undefined;
@@ -623,7 +627,7 @@ export function Review({
       viewerFocusRequest.current = null;
       if (request === interactionVersion.current) focusViewer();
     }
-  }, [content, loading, comparing, restoring, items.length, focusViewer]);
+  }, [content, loading, comparing, restoring, items.length, focusViewer, viewerOrderKey]);
 
   const skipScrollRestore = useViewerScroll({
     root: info.root,
@@ -727,12 +731,13 @@ export function Review({
         setSelected(path);
       }
       if (!pendingComment && path)
-        scrollToFile(path, scrollStore(info.root)[fileScrollKey(path)]?.top);
+        scrollToFile(path, scrollRequest?.path === path
+          ? 0 : scrollStore(info.root)[fileScrollKey(path)]?.top);
     } else if (scrollRequest) {
       scrollToFile(scrollRequest.path);
     }
     setScrollRequest(undefined);
-  }, [scrollRequest, diffAll, allContents, loading, comparing]);
+  }, [scrollRequest, diffAll, allContents, loading, comparing, viewerOrderKey]);
 
   useEffect(() => {
     if (!pendingComment || loading || comparing || !content || (!pendingComment.file && !viewer.current))
@@ -1116,15 +1121,17 @@ export function Review({
   const summary = `${paths.length} ${paths.length === 1 ? "file" : "files"} · ${unreviewedCount} unreviewed`;
   const codeView = (
     <CodeView
+      key={diffAll ? viewerOrderKey : undefined}
       ref={viewer}
       containerRef={(element) => {
-        viewerContainer.current = element;
-        // A remounted all-files diff scrolls to its file again.
+        // Preserve keyboard scrolling if a reorder replaces the focused viewer.
         if (!element) {
+          if (viewerContainer.current?.contains(document.activeElement))
+            viewerFocusRequest.current = interactionVersion.current;
           restoredKey.current = "";
-          return;
         }
-        element.tabIndex = 0;
+        viewerContainer.current = element;
+        if (element) element.tabIndex = 0;
       }}
       className="code-view"
       items={items}
