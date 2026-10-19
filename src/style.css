@@ -507,6 +507,17 @@ button.panel-toggle:hover {
 .sidebar-header .line-stats {
   font-size: 10px;
 }
+.sidebar-header .lines-added,
+.sidebar-header .lines-removed {
+  font-size: 12px;
+  font-weight: 700;
+}
+.sidebar-header .lines-added {
+  color: #66d98b;
+}
+.sidebar-header .lines-removed {
+  color: #ff7b72;
+}
 .sidebar-header .panel-toggle {
   margin-left: 2px;
 }

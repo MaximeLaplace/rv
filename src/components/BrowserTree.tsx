@@ -212,6 +212,7 @@ export function BrowserTree({
         font-variant-numeric: tabular-nums;
       }
       [data-item-section="decoration"] > span > span:empty { display: none; }
+      [data-item-type="file"] > [data-item-section="decoration"] { font-weight: 700; }
       [data-item-type="folder"] > [data-item-section="decoration"] { opacity: 0.55; }
     `,
     renderRowDecoration: ({ row }) => {
@@ -223,8 +224,8 @@ export function BrowserTree({
         text: "",
         title: `${stat.additions} lines added, ${stat.deletions} lines removed`,
         parts: [
-          { text: stat.additions ? `+${compact(stat.additions)}` : "", color: "#287541" },
-          { text: stat.deletions ? `−${compact(stat.deletions)}` : "", color: "#b33a3a" },
+          { text: stat.additions ? `+${compact(stat.additions)}` : "", color: row.kind === "directory" ? "#a2aec0" : "#66d98b" },
+          { text: stat.deletions ? `−${compact(stat.deletions)}` : "", color: row.kind === "directory" ? "#a2aec0" : "#ff7b72" },
         ],
       };
     },
