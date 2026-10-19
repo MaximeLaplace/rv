@@ -26,6 +26,7 @@ export function FileHeading({
   reviewed,
   reviewDisabled,
   onToggleReviewed,
+  onComment,
 }: {
   // The selected file or commit message; empty when nothing is shown.
   path: string;
@@ -48,6 +49,7 @@ export function FileHeading({
   reviewed: boolean;
   reviewDisabled: boolean;
   onToggleReviewed: () => void;
+  onComment: () => void;
 }) {
   return (
     <div className="file-heading">
@@ -111,7 +113,10 @@ export function FileHeading({
         </button>
       </div>
       {path && !summary && (
-        <ReviewToggle reviewed={reviewed} disabled={reviewDisabled} onToggle={onToggleReviewed} />
+        <div className="file-actions">
+          {!title && <FileCommentButton path={path} disabled={reviewDisabled} onClick={onComment} />}
+          <ReviewToggle reviewed={reviewed} disabled={reviewDisabled} onToggle={onToggleReviewed} />
+        </div>
       )}
     </div>
   );
@@ -130,6 +135,7 @@ export function DiffFileHeader({
   reviewDisabled,
   onSelect,
   onToggleReviewed,
+  onComment,
 }: {
   path: string;
   // Replaces the path, for the commit message.
@@ -142,6 +148,7 @@ export function DiffFileHeader({
   reviewDisabled: boolean;
   onSelect: () => void;
   onToggleReviewed: () => void;
+  onComment: () => void;
 }) {
   return (
     <div
@@ -162,8 +169,29 @@ export function DiffFileHeader({
         />
       )}
       {notice && <span className="file-notice">{notice}</span>}
-      <ReviewToggle reviewed={reviewed} disabled={reviewDisabled} onToggle={onToggleReviewed} />
+      <div className="file-actions">
+        {!title && <FileCommentButton path={path} disabled={reviewDisabled} onClick={onComment} />}
+        <ReviewToggle reviewed={reviewed} disabled={reviewDisabled} onToggle={onToggleReviewed} />
+      </div>
     </div>
+  );
+}
+
+function FileCommentButton({ path, disabled, onClick }: {
+  path: string;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className="file-comment"
+      aria-label={`Comment on file ${path}`}
+      title="Comment on the whole file"
+      disabled={disabled}
+      onClick={onClick}
+    >
+      Comment
+    </button>
   );
 }
 

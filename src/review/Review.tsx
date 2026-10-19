@@ -121,6 +121,7 @@ export function Review({
   // The file the line range belongs to; in the all-files diff it may differ
   // from the selected file.
   const [rangePath, setRangePath] = useState("");
+  const [fileCommentPath, setFileCommentPath] = useState("");
   const [draft, setDraft] = useState("");
   const [generalDraft, setGeneralDraft] = useState("");
   const [editing, setEditing] = useState<string>();
@@ -144,11 +145,13 @@ export function Review({
     setEditing(undefined);
     setRange(null);
     setLinePreview(undefined);
+    setFileCommentPath("");
     setDraft("");
   };
   const clearSelection = () => {
     setRange(null);
     setLinePreview(undefined);
+    setFileCommentPath("");
     setHighlight(null);
     setPendingComment(null);
   };
@@ -423,7 +426,10 @@ export function Review({
 
   const onSelection = useCallback((value: SelectedLineRange | null, path?: string) => {
     setHighlight(null);
-    if (value) setShowComments(true);
+    if (value) {
+      setShowComments(true);
+      setFileCommentPath("");
+    }
     if (value && path) setRangePath(path);
     // A reference must use one file-side's coordinates, never mixed old/new numbers.
     setRange(
@@ -442,6 +448,17 @@ export function Review({
       document.getElementById("comment-text")?.focus({ preventScroll: true });
     });
   }, [editing, onSelection]);
+  function openFileComment(path: string) {
+    if (editing) setDraft("");
+    setEditing(undefined);
+    clearSelection();
+    setSelected(path);
+    setFileCommentPath(path);
+    setShowComments(true);
+    requestAnimationFrame(() => {
+      document.getElementById("comment-text")?.focus({ preventScroll: true });
+    });
+  }
   const options = useMemo<CodeViewReactOptions<Comment, undefined>>(
     () => ({
       theme: "ayu-mirage" as const,
@@ -505,7 +522,7 @@ export function Review({
   }
   function matchesView(comment: Comment) {
     return (diffAll || comment.path === selected) && matchesScope(comment) &&
-      (!singleSide || (comment.side || "additions") === singleSide);
+      (comment.file || !singleSide || (comment.side || "additions") === singleSide);
   }
   function commentRange(comment: Comment): SelectedLineRange {
     return {
@@ -526,7 +543,7 @@ export function Review({
   }
   const diffKey = (path: string) => JSON.stringify([allKey, path]);
   const annotationsFor = (path: string) => comments
-    .filter((comment) => comment.path === path && matchesView(comment))
+    .filter((comment) => !comment.file && comment.path === path && matchesView(comment))
     .map((comment) => ({
       lineNumber: comment.end,
       side: comment.side || "additions",
@@ -590,7 +607,7 @@ export function Review({
     : [], [diffAll, content, notice, fileSource, selected, singleSide, itemVersion.current]);
   const items = (diffAll ? allItems : fileItems) as CodeViewItem<Comment>[];
   const highlightedRange =
-    highlight && matchesView(highlight) ? commentRange(highlight) : range;
+    highlight && matchesView(highlight) ? highlight.file ? null : commentRange(highlight) : range;
   const highlightedPath = highlight && matchesView(highlight) ? highlight.path : rangePath;
   // Full-file rendering has one column; side metadata is only for the comment.
   const viewerRange = highlightedRange && !diffAll
@@ -718,11 +735,15 @@ export function Review({
   }, [scrollRequest, diffAll, allContents, loading, comparing]);
 
   useEffect(() => {
-    if (!pendingComment || loading || comparing || !content || !viewer.current)
+    if (!pendingComment || loading || comparing || !content || (!pendingComment.file && !viewer.current))
       return;
     skipScrollRestore();
     scrollIntent.current = false;
-    viewer.current.scrollTo({
+    viewer.current?.scrollTo(pendingComment.file ? {
+      type: "item",
+      id: pendingComment.path,
+      align: "start",
+    } : {
       type: "range",
       id: pendingComment.path,
       range: commentRange(pendingComment),
@@ -735,9 +756,11 @@ export function Review({
     const id = ++comparisonRequest.current;
     setComparing(false);
     setRange(null);
+    setLinePreview(undefined);
+    setFileCommentPath("");
     setHighlight(comment);
     setError("");
-    if (viewerMode !== "diff" && comment.comparison && !comment.commit)
+    if (viewerMode !== "diff" && comment.comparison && !comment.commit && !comment.file)
       setViewerMode(comment.side === "deletions" ? "old" : "new");
     if (matchesView(comment)) {
       setSelected(comment.path);
@@ -801,19 +824,20 @@ export function Review({
         ),
       );
     } else {
-      if (!range || !rangePath) return;
+      if (!fileCommentPath && (!range || !rangePath)) return;
+      const path = fileCommentPath || rangePath;
       const comment: Comment = {
         id: crypto.randomUUID(),
-        path: rangePath,
-        start,
-        end,
+        path,
+        start: fileCommentPath ? 0 : start,
+        end: fileCommentPath ? 0 : end,
         text: draft.trim(),
-        side: range.side,
+        ...(fileCommentPath ? { file: true } : { side: range?.side }),
         context: tab === "files" ? "File" : compareLabel,
         ...(tab === "changes" ? {
           comparison: { mode: comparison.mode, base: comparison.base, target: comparison.target },
         } : {}),
-        ...(isMessage(rangePath) ? { commit: comparison.target } : {}),
+        ...(isMessage(path) ? { commit: comparison.target } : {}),
       };
       setComments((items) => [...items, comment]);
     }
@@ -1081,7 +1105,7 @@ export function Review({
         find.close();
         focusViewer();
       } else if (dialog) closeDialog();
-      else if (editing || range) cancelComment();
+      else if (editing || range || fileCommentPath) cancelComment();
       else return false;
       return true;
     },
@@ -1124,6 +1148,7 @@ export function Review({
           reviewDisabled={loading || comparing}
           onSelect={() => select(item.id)}
           onToggleReviewed={() => togglePathReviewed(item.id, item.id === selected)}
+          onComment={() => openFileComment(item.id)}
         />
       ) : undefined}
       renderAnnotation={({ metadata: comment }) => (
@@ -1302,6 +1327,7 @@ export function Review({
             reviewed={selectedReviewed}
             reviewDisabled={loading || comparing}
             onToggleReviewed={toggleReviewed}
+            onComment={() => openFileComment(selected)}
           />
           {error && (
             <div role="alert" className="error">
@@ -1390,6 +1416,7 @@ export function Review({
           onEdit={(comment) => {
             setEditing(comment.id);
             setRange(null);
+            setFileCommentPath("");
             setDraft(comment.text);
           }}
           onDelete={(comment) => {
@@ -1402,7 +1429,11 @@ export function Review({
           generalDraft={generalDraft}
           onGeneralDraftChange={setGeneralDraft}
           onSaveGeneral={saveGeneralComment}
-          newComment={!editing && range && rangePath ? {
+          newComment={editing ? null : fileCommentPath ? {
+            reference: fileCommentPath,
+            file: true,
+            oldSide: false,
+          } : range && rangePath ? {
             reference: reference({
               path: rangePath,
               start,
