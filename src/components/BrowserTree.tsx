@@ -117,6 +117,12 @@ export function BrowserTree({
   const collapseRef = useRef(onCollapse);
   const collapsedRef = useRef(collapsed);
   const searchRef = useRef(search);
+  const entryByPath = useMemo(
+    () => new Map(entries.map((entry) => [entry.path, entry])),
+    [entries],
+  );
+  const entriesRef = useRef(entryByPath);
+  entriesRef.current = entryByPath;
   toggleReviewedRef.current = onToggleReviewed;
   toggleDirectoryRef.current = onToggleDirectoryReviewed;
   collapseRef.current = onCollapse;
@@ -141,6 +147,20 @@ export function BrowserTree({
     initialExpansion: "open",
     density: "compact",
     icons: "standard",
+    renderRowDecoration: ({ item }) => {
+      const entry = item.kind === "file" ? entriesRef.current.get(item.path) : undefined;
+      if (!entry) return null;
+      if (entry.additions == null || entry.deletions == null)
+        return { text: "—", title: "Line change counts not available" };
+      return {
+        text: `+${entry.additions} −${entry.deletions}`,
+        title: `${entry.additions} lines added, ${entry.deletions} lines removed`,
+        parts: [
+          { text: `+${entry.additions}`, color: "var(--success)" },
+          { text: `−${entry.deletions}`, color: "var(--danger)" },
+        ],
+      };
+    },
     initialSelectedPaths: selected
       ? [toTree(selected)]
       : [],
@@ -164,8 +184,19 @@ export function BrowserTree({
       },
     },
     unsafeCSS: `
+      :host { container-type: inline-size; }
       :host(:not([data-file-review-action])) [data-type="context-menu-anchor"] {
         display: none !important;
+      }
+      [data-item-section="content"] { flex: 1; }
+      [data-item-section="decoration"] {
+        flex: 0 1 auto;
+        font-size: 10px;
+        font-variant-numeric: tabular-nums;
+      }
+      [data-item-section="decoration"] > span { gap: 4px; }
+      @container (max-width: 200px) {
+        [data-item-type="file"] > [data-item-section="decoration"] { display: none; }
       }
       [data-type="context-menu-trigger"] svg { display: none; }
       [data-type="context-menu-trigger"]::before {
@@ -202,6 +233,10 @@ export function BrowserTree({
       status: statuses[entry.status] || "modified",
     })),
   });
+  useEffect(() => {
+    // Tree options are initial-only; repaint mounted rows when counts change.
+    if (model.getFileTreeContainer()?.isConnected) model.render({});
+  }, [model, entryByPath]);
   useEffect(() => {
     const updateOrder = () => {
       onOrderChange(
