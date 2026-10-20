@@ -5,6 +5,8 @@ import type { Comment } from "../types";
 
 export function CommentsPanel({
   comments,
+  outdated,
+  onClearOutdated,
   highlight,
   onHighlight,
   onOpen,
@@ -26,6 +28,8 @@ export function CommentsPanel({
   hidden,
 }: {
   comments: Comment[];
+  outdated: ReadonlySet<string>;
+  onClearOutdated: () => void;
   highlight: Comment | null;
   onHighlight: (comment: Comment | null) => void;
   onOpen: (comment: Comment) => void;
@@ -76,6 +80,13 @@ export function CommentsPanel({
           onClick={onPreview}
         >
           Preview
+        </button>
+        <button
+          className="text-button"
+          disabled={!outdated.size}
+          onClick={onClearOutdated}
+        >
+          Clear outdated comments
         </button>
       </div>
       <form
@@ -135,6 +146,14 @@ export function CommentsPanel({
                 {String(index + 1).padStart(2, "0")}
               </span>
               <code>{reference(comment)}</code>
+              {outdated.has(comment.id) && (
+                <span
+                  className="outdated-pill"
+                  title="The commented file or lines have changed or no longer exist"
+                >
+                  OUTDATED
+                </span>
+              )}
             </div>
             {editing === comment.id ? (
               <div className="inline-edit">

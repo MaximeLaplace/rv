@@ -31,6 +31,10 @@ export type Comment = {
   start: number;
   end: number;
   text: string;
+  // Fingerprint of the selected text (or whole file) at its source revision.
+  // General comments have neither field; an empty ref means the working tree.
+  hash?: string | null;
+  sourceRef?: string;
   general?: boolean;
   // Whole-file comments have no line or side; start/end are zero.
   file?: boolean;

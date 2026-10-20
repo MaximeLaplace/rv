@@ -19,6 +19,7 @@ import { CommandLauncher } from "../components/CommandLauncher";
 import { api, loadFile } from "../lib/api";
 import { copyText } from "../lib/clipboard";
 import { nameHue } from "../lib/format";
+import { selectionHash } from "../lib/commentHash.js";
 import { isTyping } from "../lib/events";
 import { readLocation, readPreferences, viewHref, type ViewLocation } from "../lib/location";
 import { rememberPosition, scrollStore } from "../lib/scroll";
@@ -33,6 +34,7 @@ import { CopiedPromptDialog, LinePicker, PromptDialog } from "./Dialogs";
 import { useKeyboard } from "./useKeyboard";
 import { useViewerScroll } from "./useViewerScroll";
 import { useSavedState } from "./useSavedState";
+import { useOutdatedComments } from "./useOutdatedComments";
 import codeStyles from "./code.css?inline";
 import {
   MESSAGE_PATH,
@@ -103,6 +105,7 @@ export function Review({
   ]);
   const [loaded, setLoaded] = useState<{ key: string; content: Content }>();
   const [contentRevision, setContentRevision] = useState(0);
+  const { outdated, error: outdatedError } = useOutdatedComments(comments, contentRevision);
   const allKey = JSON.stringify([comparison.base, comparison.target, contentRevision]);
   const [allLoaded, setAllLoaded] =
     useState<{ key: string; contents: Record<string, Content> }>();
@@ -844,6 +847,13 @@ export function Review({
         } : {}),
         ...(isMessage(path) ? { commit: comparison.target } : {}),
       };
+      const source = isMessage(path) ? messageContent : diffAll ? allContents?.[path] : content;
+      const oldSide = fileCommentPath
+        ? singleSide === "deletions" || (!source?.newFile && Boolean(source?.oldFile))
+        : range?.side === "deletions";
+      comment.sourceRef = tab === "changes" && !isMessage(path)
+        ? oldSide ? comparison.base : comparison.target : "";
+      comment.hash = selectionHash(comment, oldSide ? source?.oldFile : source?.newFile);
       setComments((items) => [...items, comment]);
     }
     cancelComment();
@@ -864,6 +874,16 @@ export function Review({
     }]);
     setGeneralDraft("");
     setCopied(false);
+  }
+
+  function clearOutdatedComments() {
+    const remaining = comments.filter(comment => !outdated.has(comment.id));
+    setComments(remaining);
+    if (editing && outdated.has(editing)) cancelComment();
+    if (highlight && outdated.has(highlight.id)) setHighlight(null);
+    if (pendingComment && outdated.has(pendingComment.id)) setPendingComment(null);
+    setCopied(false);
+    saveNow({ comments: remaining });
   }
 
   async function copyPrompt() {
@@ -1414,6 +1434,8 @@ export function Review({
         </main>
         <CommentsPanel
           comments={comments}
+          outdated={outdated}
+          onClearOutdated={clearOutdatedComments}
           highlight={highlight}
           onHighlight={setHighlight}
           onOpen={(comment) => void openComment(comment)}
@@ -1449,7 +1471,7 @@ export function Review({
             }),
             oldSide: range.side === "deletions",
           } : null}
-          errors={[copyError, submitError, storageError]}
+          errors={[copyError, submitError, storageError, outdatedError]}
           onPreview={() => setDialog("prompt")}
           onHide={() => setShowComments(false)}
           onResize={setCommentsWidth}
