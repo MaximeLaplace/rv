@@ -14,7 +14,7 @@ export type Comparison = {
 };
 export const MESSAGE_PATH = "\0commit-message";
 export const MESSAGE_TREE_PATH = "\uE000Commit message";
-export type Source = { name: string; contents: string; notice?: string; cacheKey?: string } | null;
+export type Source = { name: string; contents: string; hash?: string; notice?: string; cacheKey?: string } | null;
 export type Info = {
   root: string;
   name: string;
@@ -52,9 +52,12 @@ export type TextSearchMatch = {
   end: number;
   side?: "additions" | "deletions";
 };
+// Last-reviewed file fingerprints, retained after changes to show the warning
+// until the file is reviewed again or explicitly marked unreviewed.
+export type ReviewFingerprints = Record<string, string>;
 // The server-side disk cache, loaded once and saved back debounced.
 export type SavedState = {
   view?: Record<string, unknown>;
-  reviewed?: Record<string, string[]>;
+  reviewed?: Record<string, ReviewFingerprints>;
   comments?: Comment[];
 };

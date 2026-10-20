@@ -84,6 +84,7 @@ export function BrowserTree({
   scrollRoot,
   scrollKey,
   reviewed,
+  newChanges,
   onToggleReviewed,
   onToggleDirectoryReviewed,
   search,
@@ -101,6 +102,7 @@ export function BrowserTree({
   scrollRoot: string;
   scrollKey: string;
   reviewed: boolean;
+  newChanges: ReadonlySet<string>;
   onToggleReviewed: (path: string) => void;
   onToggleDirectoryReviewed: (directory: string) => void;
   search: string;
@@ -121,8 +123,8 @@ export function BrowserTree({
     () => new Map(entries.map((entry) => [entry.path, entry])),
     [entries],
   );
-  const entriesRef = useRef(entryByPath);
-  entriesRef.current = entryByPath;
+  const newChangesRef = useRef(newChanges);
+  newChangesRef.current = newChanges;
   toggleReviewedRef.current = onToggleReviewed;
   toggleDirectoryRef.current = onToggleDirectoryReviewed;
   collapseRef.current = onCollapse;
@@ -147,20 +149,6 @@ export function BrowserTree({
     initialExpansion: "open",
     density: "compact",
     icons: "standard",
-    renderRowDecoration: ({ item }) => {
-      const entry = item.kind === "file" ? entriesRef.current.get(item.path) : undefined;
-      if (!entry) return null;
-      if (entry.additions == null || entry.deletions == null)
-        return { text: "—", title: "Line change counts not available" };
-      return {
-        text: `+${entry.additions} −${entry.deletions}`,
-        title: `${entry.additions} lines added, ${entry.deletions} lines removed`,
-        parts: [
-          { text: `+${entry.additions}`, color: "var(--success)" },
-          { text: `−${entry.deletions}`, color: "var(--danger)" },
-        ],
-      };
-    },
     initialSelectedPaths: selected
       ? [toTree(selected)]
       : [],
@@ -214,18 +202,30 @@ export function BrowserTree({
       [data-item-section="decoration"] > span > span:empty { display: none; }
       [data-item-type="file"] > [data-item-section="decoration"] { font-weight: 700; }
       [data-item-type="folder"] > [data-item-section="decoration"] { opacity: 0.55; }
+      [data-item-section="decoration"] > span[title^="New changes since review"] > span:first-child {
+        border: 1px solid var(--accent-border);
+        border-radius: 999px;
+        background: var(--accent-soft);
+        padding: 2px 5px;
+        font-size: 8px;
+        font-weight: 600;
+        line-height: 1.2;
+      }
     `,
     renderRowDecoration: ({ row }) => {
       const stat = statsRef.current.get(
         row.kind === "directory" ? row.path.replace(/\/?$/, "/") : row.path,
       );
-      if (!stat) return null;
+      const changed = row.kind === "file" && newChangesRef.current.has(fromTree(row.path));
+      if (!stat && !changed) return null;
+      const counts = stat ? `${stat.additions} lines added, ${stat.deletions} lines removed` : "";
       return {
         text: "",
-        title: `${stat.additions} lines added, ${stat.deletions} lines removed`,
+        title: changed ? `New changes since review${counts ? ` · ${counts}` : ""}` : counts,
         parts: [
-          { text: stat.additions ? `+${compact(stat.additions)}` : "", color: row.kind === "directory" ? "#a2aec0" : "#66d98b" },
-          { text: stat.deletions ? `−${compact(stat.deletions)}` : "", color: row.kind === "directory" ? "#a2aec0" : "#ff7b72" },
+          ...(changed ? [{ text: "NEW", color: "var(--accent)" }] : []),
+          { text: stat?.additions ? `+${compact(stat.additions)}` : "", color: row.kind === "directory" ? "#a2aec0" : "#66d98b" },
+          { text: stat?.deletions ? `−${compact(stat.deletions)}` : "", color: row.kind === "directory" ? "#a2aec0" : "#ff7b72" },
         ],
       };
     },
@@ -237,7 +237,7 @@ export function BrowserTree({
   useEffect(() => {
     // Tree options are initial-only; repaint mounted rows when counts change.
     if (model.getFileTreeContainer()?.isConnected) model.render({});
-  }, [model, entryByPath]);
+  }, [model, entryByPath, newChanges]);
   useEffect(() => {
     const updateOrder = () => {
       onOrderChange(

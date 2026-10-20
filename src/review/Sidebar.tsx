@@ -14,6 +14,7 @@ export function Sidebar({
   changedFilesOnly,
   hasMessage,
   reviewed = [],
+  newChanges,
   reviewScope,
   selected,
   onSelect,
@@ -39,6 +40,7 @@ export function Sidebar({
   changedFilesOnly: boolean;
   hasMessage: boolean;
   reviewed?: string[];
+  newChanges: ReadonlySet<string>;
   reviewScope: string;
   selected: string;
   onSelect: (path: string) => void;
@@ -194,6 +196,7 @@ export function Sidebar({
                 scrollRoot={root}
                 scrollKey={JSON.stringify(["explorer", reviewScope, done])}
                 reviewed={done}
+                newChanges={newChanges}
                 onToggleReviewed={onToggleReviewed}
                 onToggleDirectoryReviewed={onToggleDirectoryReviewed}
                 search={search}

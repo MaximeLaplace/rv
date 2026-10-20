@@ -1123,9 +1123,9 @@ diffs-container {
   align-items: start;
   gap: 8px;
 }
-.outdated-pill {
+.outdated-pill,
+.new-changes-pill {
   flex-shrink: 0;
-  margin-left: auto;
   padding: 2px 6px;
   border: 1px solid var(--accent-border);
   border-radius: 999px;
@@ -1134,6 +1134,9 @@ diffs-container {
   font-size: 8px;
   font-weight: 700;
   letter-spacing: 0.4px;
+}
+.outdated-pill {
+  margin-left: auto;
 }
 .comment-index {
   font:

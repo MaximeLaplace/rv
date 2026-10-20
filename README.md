@@ -108,6 +108,11 @@ local disk, outside the repository, in one readable directory per opened path â€
 server restarts, page reloads and browser changes. Use **Clear** to remove
 comments and reviewed marks while keeping your view settings.
 
+Reviewed files are fingerprinted with MD5. On reload or refresh, unchanged
+files stay reviewed; changed files return to Unreviewed with a **New changes
+since review** pill (and a compact **NEW** badge in the file tree). Reviewing
+the file again acknowledges its current contents and clears the warning.
+
 ## Run it
 
 Requires Node.js 22+ and Git.

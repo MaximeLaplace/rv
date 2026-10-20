@@ -1917,18 +1917,21 @@ try {
   assert.equal(await reviewedText(), "");
   await reviewViewed("Mark reviewed");
   assert.match(await reviewedText(), /pending-after-load\.ts/);
+  await waitState(state => Boolean(state.reviewed?.working?.["pending-after-load.ts"]));
   await browser("reload");
-  await wait("document.querySelector('[aria-label=\"Review scope\"]')");
-  assert.equal(await reviewedText(), "");
+  const reviewedPendingFile = "document.querySelector('section[aria-label=Reviewed] file-tree-container')?.shadowRoot?.querySelector('[role=treeitem][aria-label=\"pending-after-load.ts\"]')";
+  await wait(reviewedPendingFile);
+  assert.match(await reviewedText(), /pending-after-load\.ts/);
   await reviewScope("Uncommitted changes");
-  assert.equal(await reviewedText(), "");
+  await wait(reviewedPendingFile);
+  assert.match(await reviewedText(), /pending-after-load\.ts/);
   await reviewCommit("Document the decision");
   await wait(
     `${shadow}?.querySelector('pre')?.textContent.includes('No files changed.')`,
   );
   assert.match(await reviewedText(), /Commit message/);
   console.log(
-    "PASS Reviewed moves files and messages without duplicates; search, selection, undo, per-comparison isolation, historical persistence and mutable-view refresh reset",
+    "PASS Reviewed moves files and messages without duplicates; search, selection, undo, per-comparison isolation, historical persistence and fingerprinted mutable-view persistence",
   );
   // Cache files from another format version are ignored, never migrated.
   // Write one while no page is open, so the app's unload flush cannot

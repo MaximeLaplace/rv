@@ -186,7 +186,7 @@ export function createApp(repo, { allowRemote = false, agent = null } = {}) {
             await repo.compare(p.get("mode"), p.get("from"), p.get("to")),
           );
         if (url.pathname === "/api/file")
-          return send(200, await repo.file(p.get("path"), p.get("ref")));
+          return send(200, await repo.file(p.get("path"), p.get("ref"), p.get("hash") === "true"));
         return send(404, { error: "Not found." });
       }
       const name =

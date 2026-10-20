@@ -20,6 +20,7 @@ import { api, loadFile } from "../lib/api";
 import { copyText } from "../lib/clipboard";
 import { nameHue } from "../lib/format";
 import { selectionHash } from "../lib/commentHash.js";
+import { reviewHash } from "../lib/reviewHash.js";
 import { isTyping } from "../lib/events";
 import { readLocation, readPreferences, viewHref, type ViewLocation } from "../lib/location";
 import { rememberPosition, scrollStore } from "../lib/scroll";
@@ -35,6 +36,7 @@ import { useKeyboard } from "./useKeyboard";
 import { useViewerScroll } from "./useViewerScroll";
 import { useSavedState } from "./useSavedState";
 import { useOutdatedComments } from "./useOutdatedComments";
+import { useReviewedFiles } from "./useReviewedFiles";
 import codeStyles from "./code.css?inline";
 import {
   MESSAGE_PATH,
@@ -42,6 +44,7 @@ import {
   type Comparison,
   type Content,
   type Info,
+  type ReviewFingerprints,
   type SavedState,
   type ViewerMode,
 } from "../types";
@@ -49,6 +52,7 @@ import {
 // Matches .diff-file-heading; CodeView reserves this much for each header.
 const HEADER_HEIGHT = 44;
 const SCROLL_KEYS = ["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "];
+const NO_REVIEWS: ReviewFingerprints = {};
 
 export function Review({
   info,
@@ -62,6 +66,9 @@ export function Review({
   const [saved] = useState(() => ({ ...readPreferences(state.view), ...readLocation(info) }));
   const [restoring, setRestoring] = useState(saved.mode !== "working");
   const [reviewed, setReviewed] = useState(state.reviewed || {});
+  const [markingReviewed, setMarkingReviewed] = useState(false);
+  const [reviewActionError, setReviewActionError] = useState("");
+  const reviewChangeVersion = useRef(0);
   const [search, setSearch] = useState(saved.search);
   const [comments, setComments] = useState(state.comments || []);
   const [tab, setTab] = useState(saved.tab);
@@ -169,7 +176,7 @@ export function Review({
   const reviewHistory = useRef<{
     scope: string;
     paths: string[];
-    reviewed: boolean;
+    previous: Record<string, string | undefined>;
   }[]>([]);
   const treeOrder = useRef<[string[], string[]]>([[], []]);
   useEffect(() => {
@@ -220,10 +227,7 @@ export function Review({
 
   const { error: storageError, saveNow } = useSavedState(state, {
     view: { search, wrap, showFiles, showComments, filesWidth, commentsWidth, collapsed },
-    // Mutable views are only reviewed for this page snapshot.
-    reviewed: Object.fromEntries(
-      Object.entries(reviewed).filter(([scope]) => scope !== "files" && scope !== "working"),
-    ),
+    reviewed,
     comments,
   });
   const paths = useMemo(
@@ -270,7 +274,27 @@ export function Review({
       : comparison.mode === "working"
         ? "working"
         : JSON.stringify([comparison.mode, comparison.base, comparison.target]);
-  const reviewedInView = reviewed[reviewScope];
+  const reviewSnapshot = JSON.stringify([reviewScope, contentRevision]);
+  const latestReviewSnapshot = useRef(reviewSnapshot);
+  latestReviewSnapshot.current = reviewSnapshot;
+  const hashForReview = useCallback(async (path: string) => {
+    if (path === MESSAGE_PATH) return messageContent ? reviewHash(messageContent) : null;
+    const target = tab === "files" ? "" : comparison.target;
+    let newFile = await loadFile(path, target, contentRevision);
+    if (newFile) {
+      if (newFile.notice && !newFile.hash)
+        newFile = await loadFile(path, target, contentRevision, true);
+      return reviewHash({ oldFile: null, newFile });
+    }
+    if (tab === "files") return null;
+    let oldFile = await loadFile(path, comparison.base, contentRevision);
+    if (oldFile?.notice && !oldFile.hash)
+      oldFile = await loadFile(path, comparison.base, contentRevision, true);
+    return reviewHash({ oldFile, newFile: null });
+  }, [tab, comparison.base, comparison.target, contentRevision, messageContent]);
+  const {
+    reviewed: reviewedInView, changed: newChanges, loadHashes: loadReviewHashes, error: reviewCheckError,
+  } = useReviewedFiles(reviewed[reviewScope] || NO_REVIEWS, reviewSnapshot, hashForReview);
   const hasMessage = tab === "changes" && comparison.mode === "commit";
   const selectedReviewed = reviewedInView?.includes(selected) || false;
   const focusViewer = useCallback(() => {
@@ -959,7 +983,9 @@ export function Review({
   function resetReview() {
     setComments([]);
     setReviewed({});
+    reviewChangeVersion.current++;
     reviewHistory.current = [];
+    setReviewActionError("");
     cancelComment();
     setGeneralDraft("");
     clearSelection();
@@ -978,44 +1004,50 @@ export function Review({
     resetReview();
   }
 
+  async function updateReviewed(files: string[], wasReviewed: boolean, advance = false) {
+    const version = reviewChangeVersion.current;
+    setMarkingReviewed(true);
+    setReviewActionError("");
+    try {
+      const hashes = wasReviewed ? {} : await loadReviewHashes(files);
+      // A scope change, reset or undo cancels an in-flight review action.
+      if (latestReviewSnapshot.current !== reviewSnapshot || reviewChangeVersion.current !== version) return;
+      if (!wasReviewed && files.some(path => !hashes[path])) {
+        setReviewActionError("Could not mark all files reviewed. Some contents could not be read; refresh to retry.");
+        return;
+      }
+      const previous = new Map(Object.entries(reviewed[reviewScope] || {}));
+      reviewHistory.current.push({
+        scope: reviewScope,
+        paths: files,
+        previous: Object.fromEntries(files.map(path => [path, previous.get(path)])),
+      });
+      if (advance && !wasReviewed) moveFile(1);
+      // Follow a file moving back to the unreviewed section.
+      else if (diffAll && wasReviewed && files.includes(selected)) setScrollRequest({ path: selected });
+      setReviewed(current => {
+        const next = new Map(Object.entries(current[reviewScope] || {}));
+        for (const path of files) {
+          if (wasReviewed) next.delete(path);
+          else next.set(path, hashes[path]!);
+        }
+        return { ...current, [reviewScope]: Object.fromEntries(next) };
+      });
+    } finally {
+      setMarkingReviewed(false);
+    }
+  }
+
   function togglePathReviewed(path: string, advance = false) {
-    if (!path || !(path === MESSAGE_PATH || paths.includes(path)) || loading || comparing)
+    if (!path || !(path === MESSAGE_PATH || paths.includes(path)) || loading || comparing || markingReviewed)
       return;
-    const wasReviewed = reviewedInView?.includes(path) || false;
-    reviewHistory.current.push({
-      scope: reviewScope,
-      paths: [path],
-      reviewed: wasReviewed,
-    });
-    if (advance && !wasReviewed) moveFile(1);
-    // Follow a file moving back to the unreviewed section.
-    else if (diffAll && wasReviewed && path === selected) setScrollRequest({ path });
-    setReviewed((current) => ({
-      ...current,
-      [reviewScope]: wasReviewed
-        ? (current[reviewScope] || []).filter((item) => item !== path)
-        : [...(current[reviewScope] || []), path],
-    }));
+    void updateReviewed([path], reviewedInView.includes(path), advance);
   }
 
   function toggleDirectoryReviewed(directory: string) {
-    if (loading || comparing) return;
-    const files = paths.filter((path) => path.startsWith(directory));
-    if (!files.length) return;
-    const wasReviewed = files.every((path) => reviewedInView?.includes(path));
-    reviewHistory.current.push({
-      scope: reviewScope,
-      paths: files,
-      reviewed: wasReviewed,
-    });
-    setReviewed((current) => ({
-      ...current,
-      [reviewScope]: wasReviewed
-        ? (current[reviewScope] || []).filter(
-            (item) => !files.includes(item),
-          )
-        : [...new Set([...(current[reviewScope] || []), ...files])],
-    }));
+    if (loading || comparing || markingReviewed) return;
+    const files = paths.filter(path => path.startsWith(directory));
+    if (files.length) void updateReviewed(files, files.every(path => reviewedInView.includes(path)));
   }
 
   function toggleReviewed() {
@@ -1023,16 +1055,16 @@ export function Review({
   }
 
   function undo() {
+    reviewChangeVersion.current++;
     const action = reviewHistory.current.pop();
     if (!action) return;
-    setReviewed((current) => {
-      const reviewed = current[action.scope] || [];
-      return {
-        ...current,
-        [action.scope]: action.reviewed
-          ? [...new Set([...reviewed, ...action.paths])]
-          : reviewed.filter((path) => !action.paths.includes(path)),
-      };
+    setReviewed(current => {
+      const next = new Map(Object.entries(current[action.scope] || {}));
+      for (const [path, hash] of Object.entries(action.previous)) {
+        if (hash === undefined) next.delete(path);
+        else next.set(path, hash);
+      }
+      return { ...current, [action.scope]: Object.fromEntries(next) };
     });
     if (action.scope === reviewScope) {
       const restored = action.paths.find(
@@ -1171,8 +1203,9 @@ export function Review({
           stats={entries.find((entry) => entry.path === item.id)}
           notice={noticeFor(item.id)}
           current={item.id === selected}
-          reviewed={reviewedInView?.includes(item.id) || false}
-          reviewDisabled={loading || comparing}
+          reviewed={reviewedInView.includes(item.id)}
+          newChanges={newChanges.has(item.id)}
+          reviewDisabled={loading || comparing || markingReviewed}
           onSelect={() => select(item.id)}
           onToggleReviewed={() => togglePathReviewed(item.id, item.id === selected)}
           onComment={() => openFileComment(item.id)}
@@ -1308,6 +1341,7 @@ export function Review({
           changedFilesOnly={info.isGit}
           hasMessage={hasMessage}
           reviewed={reviewedInView}
+          newChanges={newChanges}
           reviewScope={reviewScope}
           selected={selected}
           onSelect={select}
@@ -1352,7 +1386,8 @@ export function Review({
             wrap={wrap}
             onToggleWrap={() => setWrap((value) => !value)}
             reviewed={selectedReviewed}
-            reviewDisabled={loading || comparing}
+            newChanges={newChanges.has(selected)}
+            reviewDisabled={loading || comparing || markingReviewed}
             onToggleReviewed={toggleReviewed}
             onComment={() => openFileComment(selected)}
           />
@@ -1471,7 +1506,7 @@ export function Review({
             }),
             oldSide: range.side === "deletions",
           } : null}
-          errors={[copyError, submitError, storageError, outdatedError]}
+          errors={[copyError, submitError, storageError, outdatedError, reviewCheckError, reviewActionError]}
           onPreview={() => setDialog("prompt")}
           onHide={() => setShowComments(false)}
           onResize={setCommentsWidth}

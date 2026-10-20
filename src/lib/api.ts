@@ -36,7 +36,9 @@ export async function patchState(state: SavedState, keepalive = false) {
   if (!response.ok) throw new Error((await response.json()).error);
 }
 
-export async function loadFile(path: string, ref: string, refresh: number): Promise<Source> {
-  const file = await api<Source>("file", { path, ref, refresh: String(refresh) });
+export async function loadFile(path: string, ref: string, refresh: number, fingerprint = false): Promise<Source> {
+  const file = await api<Source>("file", {
+    path, ref, refresh: String(refresh), ...(fingerprint ? { hash: "true" } : {}),
+  });
   return file && { ...file, cacheKey: JSON.stringify([refresh, ref, path]) };
 }

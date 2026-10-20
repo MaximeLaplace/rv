@@ -24,6 +24,7 @@ export function FileHeading({
   wrap,
   onToggleWrap,
   reviewed,
+  newChanges = false,
   reviewDisabled,
   onToggleReviewed,
   onComment,
@@ -47,6 +48,7 @@ export function FileHeading({
   wrap: boolean;
   onToggleWrap: () => void;
   reviewed: boolean;
+  newChanges?: boolean;
   reviewDisabled: boolean;
   onToggleReviewed: () => void;
   onComment: () => void;
@@ -61,6 +63,7 @@ export function FileHeading({
         </a>
       )}
       {path && !title && !summary && <CopyPathButton path={path} />}
+      {newChanges && !summary && <NewChangesPill />}
       <div className="view-controls">
         {showModes && (
           <div className="viewer-modes" role="group" aria-label="File view">
@@ -132,6 +135,7 @@ export function DiffFileHeader({
   notice,
   current,
   reviewed,
+  newChanges = false,
   reviewDisabled,
   onSelect,
   onToggleReviewed,
@@ -145,6 +149,7 @@ export function DiffFileHeader({
   notice?: string;
   current: boolean;
   reviewed: boolean;
+  newChanges?: boolean;
   reviewDisabled: boolean;
   onSelect: () => void;
   onToggleReviewed: () => void;
@@ -168,6 +173,7 @@ export function DiffFileHeader({
           title="Lines changed"
         />
       )}
+      {newChanges && <NewChangesPill />}
       {notice && <span className="file-notice">{notice}</span>}
       <div className="file-actions">
         {!title && <FileCommentButton path={path} disabled={reviewDisabled} onClick={onComment} />}
@@ -175,6 +181,10 @@ export function DiffFileHeader({
       </div>
     </div>
   );
+}
+
+function NewChangesPill() {
+  return <span className="new-changes-pill">New changes since review</span>;
 }
 
 function FileCommentButton({ path, disabled, onClick }: {

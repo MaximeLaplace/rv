@@ -1,6 +1,8 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
+import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
 import { promisify } from "node:util";
-import { readdir, lstat, realpath, readFile } from "node:fs/promises";
+import { readdir, lstat, realpath, readFile, readlink } from "node:fs/promises";
 import path from "node:path";
 
 const exec = promisify(execFile);
@@ -11,8 +13,14 @@ const countLines = (text) => {
   for (let i = text.indexOf("\n"); i !== -1; i = text.indexOf("\n", i + 1)) lines++;
   return lines + (text.length > 0 && !text.endsWith("\n") ? 1 : 0);
 };
-const unavailable = (name, notice) => ({ name, contents: "", notice });
+const unavailable = (name, notice, hash) => ({ name, contents: "", notice, hash });
 const TOO_LARGE = "File exceeds the 2 MiB preview limit.";
+const md5 = data => createHash("md5").update(data).digest("hex");
+async function hashStream(stream) {
+  const hash = createHash("md5");
+  for await (const chunk of stream) hash.update(chunk);
+  return hash.digest("hex");
+}
 
 export async function repository(directory) {
   const root = await realpath(directory);
@@ -98,7 +106,22 @@ export async function repository(directory) {
     }
   }
 
-  async function file(name, ref = "") {
+  async function hashRevisionFile(name, ref) {
+    // Large historical files are hashed without buffering them or sending them
+    // to the browser. The same preview size limit still applies.
+    const child = spawn("git", ["--no-optional-locks", "-C", root, "show", `${ref}:./${name}`], {
+      env: { ...process.env, GIT_PAGER: "cat", GIT_LITERAL_PATHSPECS: "1" },
+    });
+    child.stderr.resume();
+    const done = new Promise((resolve, reject) => {
+      child.once("error", reject);
+      child.once("close", code => code === 0 ? resolve() : reject(new Error("Could not hash file at revision.")));
+    });
+    const [hash] = await Promise.all([hashStream(child.stdout), done]);
+    return hash;
+  }
+
+  async function file(name, ref = "", fingerprint = false) {
     checkPath(name);
     let data;
     if (ref) {
@@ -107,11 +130,12 @@ export async function repository(directory) {
       const entry = await git("ls-tree", "-z", ref, "--", name);
       if (!entry) return null;
       if (!entry.startsWith("100"))
-        return unavailable(name, "Symbolic links and submodules are not displayed.");
+        return unavailable(name, "Symbolic links and submodules are not displayed.", md5(entry));
       const size = Number(
         (await git("cat-file", "-s", `${ref}:./${name}`)).trim(),
       );
-      if (size > MAX_FILE) return unavailable(name, TOO_LARGE);
+      if (size > MAX_FILE)
+        return unavailable(name, TOO_LARGE, fingerprint ? await hashRevisionFile(name, ref) : undefined);
       data = await run(["show", `${ref}:./${name}`], {
         encoding: "buffer",
         maxBuffer: MAX_FILE + 1024,
@@ -126,16 +150,19 @@ export async function repository(directory) {
         checkPath(relative.split(path.sep).join("/"));
         const stat = await lstat(filename);
         if (!stat.isFile())
-          return unavailable(name, "Symbolic links and directories are not displayed.");
-        if (stat.size > MAX_FILE) return unavailable(name, TOO_LARGE);
+          return unavailable(name, "Symbolic links and directories are not displayed.",
+            stat.isSymbolicLink() ? md5(await readlink(filename)) : undefined);
+        if (stat.size > MAX_FILE)
+          return unavailable(name, TOO_LARGE, fingerprint ? await hashStream(createReadStream(filename)) : undefined);
         data = await readFile(filename);
       } catch (error) {
         if (error.code === "ENOENT") return null;
         throw error;
       }
     }
-    if (data.includes(0)) return unavailable(name, "Binary file — no text preview.");
-    return { name, contents: data.toString("utf8") };
+    const hash = md5(data);
+    if (data.includes(0)) return unavailable(name, "Binary file — no text preview.", hash);
+    return { name, contents: data.toString("utf8"), hash };
   }
 
   async function files() {
