@@ -30,6 +30,8 @@ import { formatPrompt, reference } from "../prompt.js";
 import { TextSearchBar, useTextSearch, type TextSearchSource } from "./TextSearch";
 import { Sidebar } from "./Sidebar";
 import { CommentsPanel } from "./CommentsPanel";
+import { AgentConnectionDialog, AgentStatusCard } from "./AgentHandoff";
+import { useAgentConnection } from "./useAgentConnection";
 import { DiffFileHeader, FileHeading } from "./FileHeading";
 import { CopiedPromptDialog, LinePicker, PromptDialog } from "./Dialogs";
 import { useKeyboard } from "./useKeyboard";
@@ -137,11 +139,12 @@ export function Review({
   const [editing, setEditing] = useState<string>();
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState("");
+  const handoff = useAgentConnection(info.agent, info.agentConnectable);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [dialog, setDialog] =
-    useState<"commands" | "finder" | "line" | "prompt" | "copied" | null>(null);
+    useState<"commands" | "finder" | "line" | "prompt" | "copied" | "agent" | null>(null);
   const closeDialog = () => setDialog(null);
   const [reviewPickerRequest, setReviewPickerRequest] = useState(0);
   const [showFiles, setShowFiles] = useState(saved.showFiles);
@@ -935,7 +938,8 @@ export function Review({
         headers: { "X-Rv": "1", "Content-Type": "text/plain" },
         body: prompt,
       });
-      if (!response.ok) throw new Error((await response.json()).error);
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error);
       setComments([]);
       cancelComment();
       setGeneralDraft("");
@@ -943,7 +947,9 @@ export function Review({
       closeDialog();
       setCopied(false);
       setSubmitted(true);
+      setShowComments(true);
       saveNow({ comments: [] });
+      void handoff.refresh();
     } catch (error) {
       setSubmitError((error as Error).message || "Could not submit the prompt.");
     } finally {
@@ -951,9 +957,28 @@ export function Review({
     }
   }
 
-  const sendPrompt = info.agent ? submitPrompt : copyPrompt;
+  function sendPrompt() {
+    if (handoff.connection.enabled) void submitPrompt();
+    else {
+      setSubmitError("");
+      setDialog("agent");
+    }
+  }
+
+  async function enableHandoff() {
+    setSubmitError("");
+    try {
+      await handoff.enable();
+      if (comments.length) await submitPrompt();
+      else closeDialog();
+    } catch (error) {
+      setSubmitError((error as Error).message || "Could not enable agent handoff.");
+    }
+  }
+
   const copyLabel = copied ? "✓ Copied" : "Copy Prompt";
-  const sendLabel = !info.agent ? copyLabel : submitting ? "Submitting…" : "Submit to Agent";
+  const sendLabel = submitting ? "Submitting…" : submitted && !comments.length
+    ? "✓ Submitted" : "Submit to Agent";
 
   function changeTab(value: "files" | "changes", refresh = true) {
     if (refresh) {
@@ -1144,6 +1169,8 @@ export function Review({
     else if (command === "undo") undo();
     else if (command === "save-comment") saveComment();
     else if (command === "copy-prompt" && comments.length) void copyPrompt();
+    else if (command === "submit-prompt" && comments.length) sendPrompt();
+    else if (command === "agent-setup") setDialog("agent");
     else if (command === "preview-prompt" && comments.length) setDialog("prompt");
     else if (command === "toggle-diff" && diffAll) setSplit((value) => !value);
     else if (command === "toggle-wrap") setWrap((value) => !value);
@@ -1303,12 +1330,22 @@ export function Review({
             Clear
           </button>
           <button
-            className="primary copy"
+            className="copy-secondary"
+            aria-label={`${copyLabel} ${comments.length}`}
+            title="Copy review prompt (Y)"
             disabled={!comments.length || submitting}
-            onClick={sendPrompt}
+            onClick={copyPrompt}
           >
-            {info.agent && submitted && !submitting ? "✓ Submitted" : sendLabel}
-            <span className="count">{comments.length}</span>
+            {copyLabel}
+          </button>
+          <button
+            className="primary copy"
+            disabled={!comments.length || submitting || handoff.connecting}
+            onClick={sendPrompt}
+            title={handoff.connection.enabled ? "Send your comments to the agent; queue them if it isn't waiting yet" : "Connect your agent and send your comments"}
+          >
+            {sendLabel}
+            {!!comments.length && <span className="count">{comments.length}</span>}
           </button>
         </div>
       </header>
@@ -1507,6 +1544,12 @@ export function Review({
             oldSide: range.side === "deletions",
           } : null}
           errors={[copyError, submitError, storageError, outdatedError, reviewCheckError, reviewActionError]}
+          handoff={<AgentStatusCard
+            connection={handoff.connection}
+            error={handoff.error}
+            submitted={submitted}
+            onSetup={() => setDialog("agent")}
+          />}
           onPreview={() => setDialog("prompt")}
           onHide={() => setShowComments(false)}
           onResize={setCommentsWidth}
@@ -1527,12 +1570,22 @@ export function Review({
       {dialog === "prompt" && (
         <PromptDialog
           prompt={prompt}
-          agent={info.agent}
           copyLabel={copyLabel}
           sendLabel={sendLabel}
           submitting={submitting}
           onCopy={copyPrompt}
           onSend={sendPrompt}
+          onClose={closeDialog}
+        />
+      )}
+      {dialog === "agent" && (
+        <AgentConnectionDialog
+          root={info.root}
+          connection={handoff.connection}
+          connecting={handoff.connecting || submitting}
+          error={submitError || handoff.error}
+          hasComments={!!comments.length}
+          onEnable={enableHandoff}
           onClose={closeDialog}
         />
       )}

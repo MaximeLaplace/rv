@@ -57,10 +57,14 @@ edit it. General comments cover feedback that isn't tied to a file.
 
 ### Turn comments into a prompt
 
-**Copy Prompt** (<kbd>Y</kbd>) copies every comment as one prompt with exact
+**Submit to Agent** sends every saved comment to your coding agent. If handoff
+isn't enabled yet, rv offers to connect it in place—no restart needed. The
+comments panel shows whether your agent is waiting or feedback is queued.
+
+**Copy Prompt** (<kbd>Y</kbd>) is always available for a manual handoff, with exact
 file and line references. **Preview** (<kbd>P</kbd>) shows exactly what gets
-copied. After copying, rv offers to clear the review or keep the comments for
-later.
+sent or copied. After copying, rv offers to clear the review or keep the
+comments for later.
 
 ![Previewing the prompt generated from review comments](docs/screenshots/prompt.png)
 
@@ -146,6 +150,42 @@ full hash). The three options are mutually exclusive.
 
 Use `rv --help` for directory, port, host, and browser options.
 
+### Background review servers
+
+For agents and scripts, `ensure` starts a detached localhost server, prints
+its URL, and exits without opening a browser:
+
+```sh
+rv ensure [directory]      # restart and print the review URL
+rv ensure --commit HEAD   # review committed changes
+rv list                   # PID, URL, and opened directory
+rv stop /path/to/repo      # stop this directory's servers
+rv stop                   # stop all registered local servers
+```
+
+Every `ensure` gracefully restarts the directory's registered servers, including
+foreground instances, using the current rv installation. It preserves the port
+unless `--port` overrides it, and keeps comments and reviewed marks. The server
+survives the calling shell or agent; refresh existing tabs after a restart.
+It does not automatically restart after a crash or reboot.
+
+The directory defaults to the current directory and resolves to its Git
+working-tree root. Subdirectories and symlinked paths share a server; separate
+worktrees and submodules get their own. Concurrent restarts are serialized.
+Plain `rv` still opens the exact requested directory in the foreground.
+`list` and `stop` manage registered local servers, not remote ones or servers
+started by versions of rv without this feature.
+
+Runtime metadata and logs live outside the repository in rv's platform cache
+directory (`RV_CACHE_DIR` overrides it). Abandoned locks are recovered
+automatically and stale instance records are ignored. Stopping a server does
+not clear review state.
+
+After updating or rebuilding rv, `rv ensure /path/to/repo` replaces that
+repository's servers with the current installation. There is no version
+comparison or background upgrade mechanism; other servers keep their loaded
+code until restarted. Use `rv stop` to shut down all registered local servers.
+
 ### Agent integration
 
 Start rv in agent mode to send review prompts directly to a coding agent:
@@ -154,9 +194,37 @@ Start rv in agent mode to send review prompts directly to a coding agent:
 rv --agent
 ```
 
-The review UI shows **Submit to Agent** instead of **Copy Prompt**. Submission
-clears the comments after the prompt is accepted, while leaving rv open for
-another review. The agent receives one submitted prompt by running:
+Or start a detached agent session and share the printed URL with the user:
+
+```sh
+rv ensure --agent
+```
+
+Run `ensure` only once per review session, not between review rounds. Each
+invocation restarts the server: submitted prompts queued in memory are lost,
+and pending `rv --wait` calls are interrupted. Consume queued feedback before
+restarting. Include `--agent` on each `ensure` that should enable agent mode;
+without it, the new server starts with handoff disabled (you can enable it
+from the page).
+
+**Submit to Agent** is always visible. On a regular localhost server, click
+**Connect agent** in the comments panel to enable handoff without restarting.
+If you already have comments, **Submit to Agent** offers **Enable & submit**.
+This connects rv's handoff channel; it does not launch a coding agent.
+**Copy instructions** gives you a message to paste into your existing agent.
+
+The flow is simple:
+
+1. **Your agent** starts `rv ensure --agent`, shares the URL, and runs `rv --wait`.
+2. **You** review in the browser, save comments, and click **Submit to Agent**.
+3. **Your agent** receives the feedback, makes changes, and runs `rv --wait` again.
+4. **You** refresh the page and review the next round. No server restart needed.
+
+The handoff card shows **Agent is waiting** when an agent is actively waiting,
+or the number of queued reviews when it isn't. Submission clears the saved
+comments only after rv accepts the prompt, keeping reviewed marks and leaving
+the server open for another round. **Copy Prompt** remains available in either
+mode. The agent receives one submitted prompt by running:
 
 ```console
 $ rv --wait
@@ -167,7 +235,7 @@ Keep the threshold at 100 € for now.
 `rv --wait` prints the prompt to stdout and exits. Run it again to wait for the
 next submission. Prompts submitted between calls are queued by the running rv
 process. Coding agents can run `rv --skill` for a short description of this
-workflow.
+workflow. Use `rv stop .` when the session is finished.
 
 ## Development
 

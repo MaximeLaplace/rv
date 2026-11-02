@@ -3,7 +3,6 @@ import { Modal } from "../components/Modal";
 
 export function PromptDialog({
   prompt,
-  agent,
   copyLabel,
   sendLabel,
   submitting,
@@ -12,7 +11,6 @@ export function PromptDialog({
   onClose,
 }: {
   prompt: string;
-  agent: boolean;
   copyLabel: string;
   sendLabel: string;
   submitting: boolean;
@@ -30,9 +28,9 @@ export function PromptDialog({
       </div>
       <PromptText label="Prompt text" prompt={prompt} />
       <div className="dialog-footer">
-        <span>Exactly what gets {agent ? "submitted" : "copied"}.</span>
+        <span>The exact feedback your agent will receive.</span>
         <div className="dialog-actions">
-          {agent && <button onClick={onCopy}>{copyLabel}</button>}
+          <button onClick={onCopy}>{copyLabel}</button>
           <button className="primary" disabled={submitting} onClick={onSend}>
             {sendLabel}
           </button>

@@ -26,6 +26,8 @@ test("--skill prints standalone agent integration instructions", async () => {
     { cwd: tmpdir() },
   );
   assert.equal(stderr, "");
+  assert.match(stdout, /rv ensure --agent.*detached localhost server/);
+  assert.match(stdout, /Do not run ensure between rounds/);
   assert.match(stdout, /rv --agent.*long-running process/);
   assert.match(stdout, /rv --wait.*prints the exact prompt to stdout/s);
   assert.match(stdout, /run "rv --wait" again/);
@@ -38,6 +40,22 @@ test("closing an agent channel releases a pending wait", async () => {
   const pending = agent.wait();
   agent.close();
   await assert.rejects(pending.promise, /Agent session stopped/);
+});
+
+test("agent status distinguishes waiting, queued and delivered feedback", async () => {
+  const agent = createAgentChannel("token");
+  assert.deepEqual(agent.status(), { waiting: false, queued: 0 });
+  const pending = agent.wait();
+  assert.deepEqual(agent.status(), { waiting: true, queued: 0 });
+  agent.submit("First review");
+  assert.equal(await pending.promise, "First review");
+  assert.deepEqual(agent.status(), { waiting: false, queued: 0 });
+  agent.submit("Next review");
+  assert.deepEqual(agent.status(), { waiting: false, queued: 1 });
+  assert.equal(await agent.wait().promise, "Next review");
+  const canceled = agent.wait();
+  canceled.cancel();
+  assert.deepEqual(agent.status(), { waiting: false, queued: 0 });
 });
 
 test("agent submissions queue for rv --wait and clear only comments", async (t) => {

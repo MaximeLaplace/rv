@@ -170,6 +170,10 @@ code {
   border-radius: 4px;
 }
 .branch {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font:
     11px "IBM Plex Mono",
     monospace;
@@ -183,6 +187,7 @@ code {
   min-width: 0;
 }
 .review-trigger {
+  width: 100%;
   max-width: 360px;
   display: flex;
   align-items: center;
@@ -346,7 +351,8 @@ code {
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: 12px;
+  flex-shrink: 0;
 }
 .finder-trigger {
   display: flex;
@@ -372,7 +378,12 @@ code {
   color: var(--secondary);
   font-weight: 700;
 }
+.copy-secondary {
+  padding: 8px 10px;
+  white-space: nowrap;
+}
 .copy {
+  white-space: nowrap;
   display: flex;
   align-items: center;
   gap: 16px;
@@ -1064,6 +1075,64 @@ diffs-container {
   padding: 10px 18px;
   border-bottom: 1px solid var(--border);
 }
+.agent-card {
+  flex-shrink: 0;
+  margin: 14px 15px 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: linear-gradient(125deg, var(--surface), var(--panel));
+}
+.agent-card.ready {
+  border-color: #52664b;
+  background: linear-gradient(125deg, var(--success-soft), var(--panel));
+}
+.agent-card.queued {
+  border-color: var(--accent-border);
+  background: linear-gradient(125deg, var(--accent-soft), var(--panel));
+}
+.agent-card.error {
+  border-color: var(--danger-border);
+  background: var(--danger-soft);
+}
+.agent-card-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.agent-card-heading button {
+  margin-left: auto;
+  color: var(--link);
+  white-space: nowrap;
+}
+.agent-card-eyebrow {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+.agent-status-dot {
+  flex: 0 0 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.ready .agent-status-dot { background: var(--success); }
+.queued .agent-status-dot { background: var(--accent); }
+.error .agent-status-dot { background: var(--danger); }
+.agent-card h3 {
+  margin: 10px 0 4px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+}
+.agent-card p {
+  margin: 0;
+  color: var(--secondary);
+  font-size: 11px;
+  line-height: 1.65;
+}
 .comments-body {
   flex: 1;
   overflow: auto;
@@ -1373,6 +1442,110 @@ diffs-container {
   min-width: 22px;
   padding: 2px 5px;
 }
+.agent-dialog {
+  width: min(580px, 92vw);
+  max-height: 90dvh;
+  overflow: auto;
+  background: var(--panel);
+  border: 1px solid var(--control-border);
+  border-radius: 12px;
+  box-shadow: 0 24px 80px var(--shadow);
+}
+.agent-dialog-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 24px 24px 0;
+}
+.agent-dialog-heading h2 {
+  margin: 8px 0 0;
+  color: var(--text);
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.4px;
+}
+.agent-dialog-heading button {
+  border: 0;
+  background: transparent;
+}
+.agent-dialog-body {
+  padding: 0 24px 24px;
+}
+.agent-intro {
+  margin: 14px 0 24px;
+  color: var(--secondary);
+  font-size: 12px;
+  line-height: 1.8;
+}
+.agent-steps {
+  display: grid;
+  gap: 18px;
+  list-style: none;
+  margin: 0 0 24px;
+  padding: 0;
+}
+.agent-steps li {
+  display: flex;
+  align-items: start;
+  gap: 12px;
+}
+.agent-steps li > span {
+  display: grid;
+  place-items: center;
+  flex: 0 0 24px;
+  height: 24px;
+  border: 1px solid var(--accent-border);
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11px;
+}
+.agent-steps strong {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+}
+.agent-steps p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.7;
+}
+.agent-instructions {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--input);
+}
+.agent-instructions > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.agent-instructions button {
+  padding: 4px 8px;
+  font-size: 10px;
+}
+.agent-instructions > code {
+  display: block;
+  color: var(--link);
+  font-size: 11px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.agent-setup-error {
+  margin: 14px 0 0;
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
 .prompt-dialog {
   width: min(650px, 90vw);
   background: var(--overlay);
@@ -1603,6 +1776,13 @@ kbd {
       min(520px, 35vw)
     );
   }
+}
+@media (max-width: 1250px) {
+  .topbar { gap: 10px; }
+  .repo-name { max-width: 150px; }
+  .branch { display: none; }
+  .finder-trigger kbd { display: none; }
+  .clear { min-width: 0; padding: 8px 10px; }
 }
 @media (max-width: 1050px) {
   .workspace {

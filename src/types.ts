@@ -20,10 +20,17 @@ export type Info = {
   name: string;
   isGit: boolean;
   agent: boolean;
+  agentConnectable: boolean;
   branch: string;
   files: string[];
   working: Comparison;
   commits: { id: string; short: string; subject: string; date: string }[];
+};
+export type AgentConnection = {
+  enabled: boolean;
+  connectable: boolean;
+  waiting: boolean;
+  queued: number;
 };
 export type Comment = {
   id: string;

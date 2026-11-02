@@ -42,6 +42,9 @@ export function createAgentChannel(token) {
   let waiter = null;
   return {
     token,
+    status() {
+      return { waiting: Boolean(waiter), queued: queue.length };
+    },
     submit(prompt) {
       if (waiter) {
         const current = waiter;
@@ -77,7 +80,13 @@ export function createAgentChannel(token) {
   };
 }
 
-export function createApp(repo, { allowRemote = false, agent = null } = {}) {
+export function createApp(repo, { allowRemote = false, agent = null, connectAgent = null, instanceId } = {}) {
+  let connecting;
+  const agentConnection = () => ({
+    enabled: Boolean(agent),
+    connectable: Boolean(connectAgent),
+    ...(agent?.status() || { waiting: false, queued: 0 }),
+  });
   // Serialize read/merge/write operations so simultaneous tabs cannot lose
   // unrelated sections (for example, preferences racing with a comment save).
   let stateWrite = Promise.resolve();
@@ -109,7 +118,8 @@ export function createApp(repo, { allowRemote = false, agent = null } = {}) {
       if (
         req.method !== "GET" &&
         url.pathname !== "/api/state" &&
-        url.pathname !== "/api/agent/submit"
+        url.pathname !== "/api/agent/submit" &&
+        url.pathname !== "/api/agent/connection"
       )
         return send(405, { error: "Read-only server." });
       if (url.pathname.startsWith("/api/")) {
@@ -119,6 +129,8 @@ export function createApp(repo, { allowRemote = false, agent = null } = {}) {
           req.headers["sec-fetch-site"] === "cross-site"
         )
           return send(403, { error: "Same-origin access only." });
+        if (url.pathname === "/api/instance")
+          return send(200, { root: repo.root, instanceId, pid: process.pid });
         if (url.pathname === "/api/state") {
           // Review state is a browser-independent cache on local disk,
           // served back so it survives restarts, ports and browsers.
@@ -146,6 +158,18 @@ export function createApp(repo, { allowRemote = false, agent = null } = {}) {
           }
           return send(405, { error: "Unsupported method." });
         }
+        if (url.pathname === "/api/agent/connection") {
+          if (req.method !== "GET" && req.method !== "POST")
+            return send(405, { error: "Unsupported method." });
+          if (req.method === "POST" && !agent) {
+            if (!connectAgent)
+              return send(409, { error: "Start rv with --agent to enable handoff on this server." });
+            // Simultaneous tabs share one channel and one session token.
+            connecting ||= connectAgent().finally(() => { connecting = null; });
+            agent = await connecting;
+          }
+          return send(200, agentConnection());
+        }
         if (url.pathname.startsWith("/api/agent/") && !agent)
           return send(404, { error: "Agent mode is not enabled." });
         // Only the rv --wait process holds the session token; the browser
@@ -172,12 +196,13 @@ export function createApp(repo, { allowRemote = false, agent = null } = {}) {
           if (!prompt.trim()) return send(400, { error: "Prompt is empty." });
           await writeState(async () =>
             saveState(repo.root, { ...await loadState(repo.root), comments: [] }));
+          const delivered = agent.status().waiting;
           agent.submit(prompt);
-          return send(200, { ok: true });
+          return send(200, { ok: true, delivered });
         }
         const p = url.searchParams;
         if (url.pathname === "/api/info")
-          return send(200, { ...await repo.info(), agent: Boolean(agent) });
+          return send(200, { ...await repo.info(), agent: Boolean(agent), agentConnectable: Boolean(connectAgent), instanceId, pid: process.pid });
         if (url.pathname === "/api/line-counts")
           return send(200, await repo.lineCounts());
         if (url.pathname === "/api/compare")
