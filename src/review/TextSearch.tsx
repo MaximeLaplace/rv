@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState, type RefObject } from "react";
 import type { FileDiffMetadata } from "@pierre/diffs";
 import type { CodeViewHandle } from "@pierre/diffs/react";
 import {
@@ -33,6 +33,7 @@ export function useTextSearch({
   viewerMode,
   selected,
   viewer,
+  revealDiff,
 }: {
   sources: TextSearchSource[];
   split: boolean;
@@ -41,6 +42,7 @@ export function useTextSearch({
   viewerMode: ViewerMode;
   selected: string;
   viewer: RefObject<CodeViewHandle<Comment, undefined> | null>;
+  revealDiff: (path: string) => boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [highlightSelectedText, setHighlightSelectedText] = useState(false);
@@ -112,17 +114,23 @@ export function useTextSearch({
       Math.max(0, matches.findIndex((match) => after.has(match.path))));
     selectedMatch.current = null;
   }, [query, contentKey, viewerMode, split, expanded]);
+  const revealMatch = useEffectEvent(revealDiff);
   useEffect(() => {
     // In the all-files diff, the viewed file follows the match first:
     // re-rendering for a new selection would cancel an earlier scroll.
     if (!open || !current || current.path !== selected || !viewer.current) return;
-    viewer.current.scrollTo({
+    const scroll = () => viewer.current?.scrollTo({
       type: "line",
       id: current.path,
       lineNumber: current.line,
       side: current.side,
       align: "center",
     });
+    if (revealMatch(current.path)) {
+      const frame = requestAnimationFrame(scroll);
+      return () => cancelAnimationFrame(frame);
+    }
+    scroll();
   }, [open, current, selected]);
   useEffect(() => {
     clearHighlights();

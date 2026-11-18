@@ -125,8 +125,7 @@ export function FileHeading({
   );
 }
 
-// A file's sticky header in the all-files diff. Its background shows whether
-// the file is in the unreviewed or the reviewed section.
+// A file's sticky header stays visible even when its diff is collapsed.
 export function DiffFileHeader({
   path,
   title,
@@ -135,9 +134,11 @@ export function DiffFileHeader({
   notice,
   current,
   reviewed,
+  collapsed,
   newChanges = false,
   reviewDisabled,
   onSelect,
+  onToggleCollapsed,
   onToggleReviewed,
   onComment,
 }: {
@@ -149,9 +150,11 @@ export function DiffFileHeader({
   notice?: string;
   current: boolean;
   reviewed: boolean;
+  collapsed: boolean;
   newChanges?: boolean;
   reviewDisabled: boolean;
   onSelect: () => void;
+  onToggleCollapsed: () => void;
   onToggleReviewed: () => void;
   onComment: () => void;
 }) {
@@ -160,24 +163,48 @@ export function DiffFileHeader({
       className={`file-heading diff-file-heading${reviewed ? " reviewed" : ""}`}
       data-path={path}
       data-current={current ? "true" : undefined}
+      data-collapsed={collapsed || undefined}
     >
-      <a className="file-path" href={href} onClick={onPlainClick(onSelect)}>
+      {!notice && (
+        <button
+          type="button"
+          className="tree-action diff-file-caret"
+          aria-label={`${collapsed ? "Expand" : "Collapse"} ${title || path}`}
+          aria-expanded={!collapsed}
+          title={collapsed ? "Expand file" : "Collapse file"}
+          onClick={onToggleCollapsed}
+        >
+          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 14 14">
+            <path d="m5 3 4 4-4 4" />
+          </svg>
+        </button>
+      )}
+      <a className="file-path" href={href} title={title || path} onClick={onPlainClick(onSelect)}>
         {title || path}
       </a>
       {!title && <CopyPathButton path={path} />}
-      {stats?.additions != null && stats.deletions != null && (
-        <LineStats
-          className="file-diff-stats line-stats"
-          additions={stats.additions}
-          deletions={stats.deletions}
-          title="Lines changed"
-        />
-      )}
       {newChanges && <NewChangesPill />}
       {notice && <span className="file-notice">{notice}</span>}
       <div className="file-actions">
-        {!title && <FileCommentButton path={path} disabled={reviewDisabled} onClick={onComment} />}
-        <ReviewToggle reviewed={reviewed} disabled={reviewDisabled} onToggle={onToggleReviewed} />
+        {stats?.additions != null && stats.deletions != null && (
+          <LineStats
+            className="file-diff-stats line-stats"
+            additions={stats.additions}
+            deletions={stats.deletions}
+            title="Lines changed"
+          />
+        )}
+        <label className="review-checkbox">
+          <input
+            className="review-toggle"
+            type="checkbox"
+            checked={reviewed}
+            disabled={reviewDisabled}
+            onChange={onToggleReviewed}
+          />
+          Reviewed
+        </label>
+        {!title && <FileCommentButton path={path} disabled={reviewDisabled} onClick={onComment} iconOnly />}
       </div>
     </div>
   );
@@ -187,20 +214,25 @@ function NewChangesPill() {
   return <span className="new-changes-pill">New changes since review</span>;
 }
 
-function FileCommentButton({ path, disabled, onClick }: {
+function FileCommentButton({ path, disabled, onClick, iconOnly = false }: {
   path: string;
   disabled: boolean;
   onClick: () => void;
+  iconOnly?: boolean;
 }) {
   return (
     <button
-      className="file-comment"
+      className={iconOnly ? "tree-action file-comment" : "file-comment"}
       aria-label={`Comment on file ${path}`}
       title="Comment on the whole file"
       disabled={disabled}
       onClick={onClick}
     >
-      Comment
+      {iconOnly ? (
+        <svg aria-hidden="true" width="18" height="18" viewBox="0 0 16 16">
+          <path d="M2.5 3.5h11v7h-6l-3.5 2.5v-2.5H2.5z" />
+        </svg>
+      ) : "Comment"}
     </button>
   );
 }
@@ -220,7 +252,7 @@ function ReviewToggle({
       aria-label={reviewed ? "Mark unreviewed" : "Mark reviewed"}
       aria-pressed={reviewed}
       disabled={disabled}
-      title={reviewed ? "Move back to unreviewed" : "Move to Reviewed"}
+      title={reviewed ? "Mark unreviewed" : "Mark reviewed"}
       onClick={onToggle}
     >
       {reviewed ? "✓ Reviewed" : "Mark reviewed"}

@@ -32,9 +32,11 @@
   --selection: #2e425a;
   --selection-border: #6484ad;
   --focus-ring: #ffcc6633;
-  --reviewed: #c4a7e7;
+  --reviewed: #d9b9f6;
   --reviewed-soft: #302e43;
   --reviewed-border: #4a4263;
+  --reviewed-banner: #4c365f;
+  --reviewed-banner-border: #8a67ad;
   --success: #a8cc83;
   --success-soft: #29382f;
   --danger: #f28779;
@@ -831,10 +833,6 @@ button.panel-toggle:hover {
   color: var(--text);
   background: var(--hover);
 }
-.file-diff-stats {
-  margin-left: 0;
-  font-size: 10px;
-}
 .file-actions {
   display: flex;
   align-items: center;
@@ -855,32 +853,98 @@ button.panel-toggle:hover {
   color: var(--secondary);
   font-size: 11px;
 }
-/* Neutral slate separates files without implying a warning; reviewed files
-   stay lavender. The height must match HEADER_HEIGHT in Review.tsx. */
+/* Neutral slate separates files without implying a warning; reviewed files stay lavender. */
 .diff-file-heading {
   height: 44px;
   min-height: 0;
   flex-wrap: nowrap;
-  padding: 0 19px;
+  gap: 6px;
+  padding: 0 8px;
   overflow: hidden;
   background: var(--overlay);
-  border-block: 1px solid var(--control-border);
+  border-block: 1px solid var(--diff-card-border);
+  border-radius: var(--diff-card-radius) var(--diff-card-radius) 0 0;
   /* Slotted into the diff, which would otherwise set its code font. */
   font: 12px/normal "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: var(--text);
 }
+.diff-file-heading[data-collapsed] {
+  border-radius: var(--diff-card-radius);
+  border-bottom-color: transparent;
+}
 .diff-file-heading .file-path {
-  color: var(--text);
+  min-width: 0;
+  color: #f0f6fc;
+  font-size: 12px;
+  font-weight: 400;
 }
 .diff-file-heading.reviewed {
-  background: var(--reviewed-soft);
-  border-color: var(--reviewed-border);
+  background: var(--reviewed-banner);
+  box-shadow: inset 3px 0 var(--reviewed);
 }
-.diff-file-heading.reviewed .file-path {
+.diff-file-heading .tree-action {
+  width: 28px;
+  height: 28px;
+  flex-basis: 28px;
+  color: var(--secondary);
+}
+.diff-file-heading .tree-action:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--hover);
+}
+.diff-file-heading.reviewed .diff-file-caret {
   color: var(--reviewed);
 }
-.diff-file-heading .review-toggle {
+.diff-file-heading .copy-path {
+  margin-left: 0;
+}
+.diff-file-heading .copy-path svg {
+  width: 18px;
+  height: 18px;
+}
+.diff-file-caret[aria-expanded="true"] svg {
+  transform: rotate(90deg);
+}
+.diff-file-heading .file-actions {
+  gap: 6px;
+}
+.file-diff-stats {
+  margin-inline: 0 4px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.review-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border: 1px solid var(--control-border);
+  border-radius: 5px;
   background: var(--surface);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.review-checkbox:hover:not(:has(:disabled)) {
+  background: var(--hover);
+}
+.review-checkbox:has(:checked) {
+  color: var(--reviewed);
+  background: var(--reviewed-soft);
+  border-color: var(--reviewed-banner-border);
+}
+.review-checkbox:has(:disabled) {
+  cursor: default;
+  opacity: 0.5;
+}
+.review-checkbox input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--reviewed);
+  cursor: inherit;
 }
 .file-notice {
   overflow: hidden;
@@ -963,6 +1027,27 @@ button.panel-toggle:hover {
 .code-view {
   height: 100%;
   overflow: auto;
+}
+.diff-cards {
+  --diff-card-border: #535962;
+  --diff-card-radius: 6px;
+  padding-inline: 10px;
+}
+.diff-cards diffs-container {
+  position: relative;
+  border-radius: var(--diff-card-radius);
+  /* Clip the code corners without introducing a scroll container for the sticky header. */
+  overflow: clip;
+}
+.diff-cards diffs-container::after {
+  /* Paint the frame without changing the virtualizer's measured item height. */
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border: 1px solid var(--diff-card-border);
+  border-radius: inherit;
+  pointer-events: none;
 }
 /* Keep the viewer on the editor surface, not the theme's sidebar fallback. */
 diffs-container {

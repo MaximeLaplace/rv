@@ -37,13 +37,12 @@ can comment on.
 
 ### Every change in one scroll
 
-**Diff** shows every changed file in one scroll: unreviewed files first, under
-slate headers, then reviewed files, under lavender headers. The file tree
-follows the file at the top as you scroll; selecting a file scrolls to it.
-Mark files reviewed from their header, the file tree (also whole directories),
-or with <kbd>R</kbd>; <kbd>U</kbd> undoes it.
-
-![Marking files reviewed moves them to the Reviewed section](docs/screenshots/reviewed.gif)
+**Diff** shows every changed file in one scroll. Marking a file reviewed
+collapses its code in place and turns its header lavender. Use the caret to
+collapse or reopen a file without changing its review status. The sidebar still
+groups reviewed files separately and follows the file at the top as you scroll.
+Selecting a file scrolls to its header. Mark files reviewed from their header,
+the file tree (also whole directories), or with <kbd>R</kbd>; <kbd>U</kbd> undoes it.
 
 ### Comment on files, lines and ranges
 

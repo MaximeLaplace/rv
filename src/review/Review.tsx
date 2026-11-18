@@ -51,8 +51,9 @@ import {
   type ViewerMode,
 } from "../types";
 
-// Matches .diff-file-heading; CodeView reserves this much for each header.
+// Matches .diff-file-heading; the gap between cards is part of CodeView's layout.
 const HEADER_HEIGHT = 44;
+const DIFF_CARD_LAYOUT = { paddingTop: 12, paddingBottom: 12, gap: 16 };
 const SCROLL_KEYS = ["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "];
 const NO_REVIEWS: ReviewFingerprints = {};
 
@@ -68,6 +69,7 @@ export function Review({
   const [saved] = useState(() => ({ ...readPreferences(state.view), ...readLocation(info) }));
   const [restoring, setRestoring] = useState(saved.mode !== "working");
   const [reviewed, setReviewed] = useState(state.reviewed || {});
+  const [diffDisclosure, setDiffDisclosure] = useState<{ scope: string; overrides: Map<string, boolean> }>();
   const [markingReviewed, setMarkingReviewed] = useState(false);
   const [reviewActionError, setReviewActionError] = useState("");
   const reviewChangeVersion = useRef(0);
@@ -299,7 +301,39 @@ export function Review({
     reviewed: reviewedInView, changed: newChanges, loadHashes: loadReviewHashes, error: reviewCheckError,
   } = useReviewedFiles(reviewed[reviewScope] || NO_REVIEWS, reviewSnapshot, hashForReview);
   const hasMessage = tab === "changes" && comparison.mode === "commit";
-  const selectedReviewed = reviewedInView?.includes(selected) || false;
+  const selectedReviewed = reviewedInView.includes(selected);
+  const collapsedDiffs = useMemo(() => {
+    const result = new Set(reviewedInView);
+    if (diffDisclosure?.scope === reviewScope) {
+      for (const [path, closed] of diffDisclosure.overrides) {
+        if (closed) result.add(path);
+        else result.delete(path);
+      }
+    }
+    return result;
+  }, [reviewedInView, diffDisclosure, reviewScope]);
+  function setDiffDisclosureOverride(files: string[], closed?: boolean) {
+    setDiffDisclosure(current => {
+      const previous = current?.scope === reviewScope ? current.overrides : undefined;
+      if (!files.some(path => previous?.get(path) !== closed)) return current;
+      const overrides = new Map(previous);
+      for (const path of files) {
+        if (closed === undefined) overrides.delete(path);
+        else overrides.set(path, closed);
+      }
+      return { scope: reviewScope, overrides };
+    });
+  }
+  function setDiffCollapsed(path: string, closed: boolean) {
+    // By default reviewed files are collapsed and unreviewed files are open.
+    setDiffDisclosureOverride([path], closed === reviewedInView.includes(path) ? undefined : closed);
+  }
+  // Navigation to a line (rather than just a file header) reveals its code.
+  function revealDiff(path: string) {
+    if (!diffAll || !collapsedDiffs.has(path)) return false;
+    setDiffCollapsed(path, false);
+    return true;
+  }
   const focusViewer = useCallback(() => {
     viewerContainer.current?.focus({ preventScroll: true });
   }, []);
@@ -530,7 +564,7 @@ export function Review({
       expandUnchanged: expanded,
       disableFileHeader: !diffAll,
       stickyHeaders: true,
-      ...(diffAll ? { layout: { paddingTop: 0, paddingBottom: 0, gap: 0 } } : {}),
+      ...(diffAll ? { layout: DIFF_CARD_LAYOUT } : {}),
     }),
     [split, wrap, expanded, onSelection, openLineComment, diffAll],
   );
@@ -592,13 +626,10 @@ export function Review({
     previousContent.current = versionedContent;
     itemVersion.current++;
   }
-  // Unreviewed files first, then reviewed ones, each in file tree order.
-  const order = useMemo(() => {
-    if (!diffAll) return [];
-    const done = (path: string) => reviewedInView?.includes(path) || false;
-    const all = [...(hasMessage ? [MESSAGE_PATH] : []), ...[...paths].sort(compareTreePaths)];
-    return [...all.filter((path) => !done(path)), ...all.filter(done)];
-  }, [diffAll, hasMessage, paths, reviewedInView]);
+  // Keep files in tree order regardless of review status.
+  const order = useMemo(() => diffAll
+    ? [...(hasMessage ? [MESSAGE_PATH] : []), ...[...paths].sort(compareTreePaths)]
+    : [], [diffAll, hasMessage, paths]);
   // CodeView's rendered range is index-based: moving mounted items outside
   // that range leaves stale elements behind. Recreate it only when the order
   // changes, then restore the selected file's relative scroll position below.
@@ -619,23 +650,25 @@ export function Review({
     : [], [allContents, order, messageContent]);
   const find = useTextSearch({
     sources: diffAll ? allSources : viewedSources, split, expanded, viewerMode, selected, viewer,
+    revealDiff,
     // Moving between files of the all-files diff keeps the search.
     contentKey: diffAll ? allKey : contentKey,
   });
   // Keep item objects stable across unrelated renders: CodeView resets its
   // items when any item changes identity, and doing so while it renders (it
   // flushes React updates mid-frame) drops a pending scrollTo, e.g. from J/K.
-  // Annotations follow comments through itemVersion.
+  // Annotations follow comments through itemVersion; reserve one bit for the
+  // collapse state so CodeView also updates when only that state changes.
   const allItems = useMemo(() => diffAll && allContents ? order.map((path) => {
-    const shared = { id: path, annotations: annotationsFor(path), version: itemVersion.current };
-    if (isMessage(path)) return { ...shared, type: "file", file: messageContent?.newFile };
     const notice = noticeFor(path);
+    const collapsed = !!notice || collapsedDiffs.has(path);
+    const shared = { id: path, annotations: annotationsFor(path), collapsed,
+      version: itemVersion.current * 2 + Number(collapsed) };
+    if (isMessage(path)) return { ...shared, type: "file", file: messageContent?.newFile };
     // Files without a previewable diff show only their header.
-    return notice
-      ? { ...shared, type: "diff", collapsed: true,
-          fileDiff: parseDiff(diffKey(path), { oldFile: null, newFile: { name: path, contents: "" } }) }
-      : { ...shared, type: "diff", fileDiff: parseDiff(diffKey(path), allContents[path]) };
-  }) : [], [diffAll, allContents, order, messageContent, itemVersion.current]);
+    const source = notice ? { oldFile: null, newFile: { name: path, contents: "" } } : allContents[path];
+    return { ...shared, type: "diff", fileDiff: parseDiff(diffKey(path), source) };
+  }) : [], [diffAll, allContents, order, messageContent, collapsedDiffs, itemVersion.current]);
   const fileItems = useMemo(() => !diffAll && content && !notice && fileSource
     ? [{ type: "file", file: fileSource, id: selected, annotations: annotationsFor(selected), version: itemVersion.current }]
     : [], [diffAll, content, notice, fileSource, selected, singleSide, itemVersion.current]);
@@ -711,14 +744,18 @@ export function Review({
   function scrollToFile(path: string, offset = 0) {
     if (!viewer.current || !order.includes(path)) return;
     scrollIntent.current = false;
-    viewer.current.scrollTo({ type: "item", id: path, align: "start", offset: -offset });
+    // Keep the first card's top padding when opening or returning to its header.
+    const savedOffset = collapsedDiffs.has(path) ? 0 : offset;
+    viewer.current.scrollTo({ type: "item", id: path, align: "start",
+      offset: path === order[0] && savedOffset === 0 ? DIFF_CARD_LAYOUT.paddingTop : -savedOffset });
   }
   const onViewerScroll = useCallback((
     scrollTop: number,
     instance: NonNullable<ReturnType<CodeViewHandle<Comment, undefined>["getInstance"]>>,
   ) => {
     if (restoredKey.current !== allKey) return;
-    let current = "";
+    // The first file is current even while its top padding is visible.
+    let current = live.current.order[0];
     for (const path of live.current.order) {
       const top = instance.getTopForItem(path);
       if (top === undefined || top > scrollTop + 1) break;
@@ -726,7 +763,7 @@ export function Review({
     }
     if (!current) return;
     rememberPosition(info.root, fileScrollKey(current), {
-      top: scrollTop - (instance.getTopForItem(current) || 0),
+      top: Math.max(0, scrollTop - (instance.getTopForItem(current) || 0)),
       left: 0,
     });
     // Only scrolling moves the selection, not layout changes like Expand all.
@@ -749,6 +786,18 @@ export function Review({
     setSelected(current);
   }, [allKey, info.root, tab, comparison]);
   const [scrollRequest, setScrollRequest] = useState<{ path: string }>();
+  function keepCollapsingHeaderVisible(files: string[]) {
+    const instance = diffAll && viewer.current?.getInstance();
+    if (!instance) return;
+    const top = instance.getScrollTop();
+    // If we are deep inside a file, that scroll offset no longer exists once
+    // it collapses. Anchor to its sticky header instead of jumping past it.
+    const pinned = instance.getRenderedItems().find(({ id, element }) => {
+      const itemTop = instance.getTopForItem(id);
+      return itemTop !== undefined && itemTop < top && top < itemTop + element.offsetHeight;
+    });
+    if (pinned && files.includes(pinned.id)) setScrollRequest({ path: pinned.id });
+  }
   useEffect(() => {
     if (!diffAll || !allContents || loading || comparing || !viewer.current) return;
     if (restoredKey.current !== allKey) {
@@ -772,6 +821,8 @@ export function Review({
   useEffect(() => {
     if (!pendingComment || loading || comparing || !content || (!pendingComment.file && !viewer.current))
       return;
+    // Wait for CodeView to lay out the expanded item before scrolling to its lines.
+    if (!pendingComment.file && revealDiff(pendingComment.path)) return;
     skipScrollRestore();
     scrollIntent.current = false;
     viewer.current?.scrollTo(pendingComment.file ? {
@@ -785,7 +836,7 @@ export function Review({
       align: "center",
     });
     setPendingComment(null);
-  }, [pendingComment, content, loading, comparing, viewerMode, viewerScrollKey]);
+  }, [pendingComment, content, loading, comparing, viewerMode, viewerScrollKey, collapsedDiffs]);
 
   async function openComment(comment: Comment) {
     const id = ++comparisonRequest.current;
@@ -1008,6 +1059,7 @@ export function Review({
   function resetReview() {
     setComments([]);
     setReviewed({});
+    setDiffDisclosure(undefined);
     reviewChangeVersion.current++;
     reviewHistory.current = [];
     setReviewActionError("");
@@ -1047,9 +1099,11 @@ export function Review({
         paths: files,
         previous: Object.fromEntries(files.map(path => [path, previous.get(path)])),
       });
-      if (advance && !wasReviewed) moveFile(1);
-      // Follow a file moving back to the unreviewed section.
-      else if (diffAll && wasReviewed && files.includes(selected)) setScrollRequest({ path: selected });
+      if (!wasReviewed) {
+        if (diffAll) keepCollapsingHeaderVisible(files);
+        else if (advance) moveFile(1);
+      }
+      setDiffDisclosureOverride(files);
       setReviewed(current => {
         const next = new Map(Object.entries(current[reviewScope] || {}));
         for (const path of files) {
@@ -1092,6 +1146,7 @@ export function Review({
       return { ...current, [action.scope]: Object.fromEntries(next) };
     });
     if (action.scope === reviewScope) {
+      setDiffDisclosureOverride(action.paths);
       const restored = action.paths.find(
         (path) => path === MESSAGE_PATH || paths.includes(path),
       );
@@ -1117,6 +1172,7 @@ export function Review({
     };
     closeDialog();
     onSelection(nextRange, selected);
+    revealDiff(selected);
     requestAnimationFrame(() => viewer.current?.scrollTo({
       type: "range",
       id: selected,
@@ -1196,7 +1252,7 @@ export function Review({
     dialogOpen: !!dialog,
   });
 
-  const unreviewedCount = order.filter((path) => !reviewedInView?.includes(path)).length;
+  const unreviewedCount = order.filter((path) => !reviewedInView.includes(path)).length;
   const summary = `${paths.length} ${paths.length === 1 ? "file" : "files"} · ${unreviewedCount} unreviewed`;
   const codeView = (
     <CodeView
@@ -1212,7 +1268,7 @@ export function Review({
         viewerContainer.current = element;
         if (element) element.tabIndex = 0;
       }}
-      className="code-view"
+      className={`code-view${diffAll ? " diff-cards" : ""}`}
       items={items}
       options={options}
       selectedLines={
@@ -1231,10 +1287,16 @@ export function Review({
           notice={noticeFor(item.id)}
           current={item.id === selected}
           reviewed={reviewedInView.includes(item.id)}
+          collapsed={!!item.collapsed}
           newChanges={newChanges.has(item.id)}
           reviewDisabled={loading || comparing || markingReviewed}
           onSelect={() => select(item.id)}
-          onToggleReviewed={() => togglePathReviewed(item.id, item.id === selected)}
+          onToggleCollapsed={() => {
+            const closed = !collapsedDiffs.has(item.id);
+            if (closed) keepCollapsingHeaderVisible([item.id]);
+            setDiffCollapsed(item.id, closed);
+          }}
+          onToggleReviewed={() => togglePathReviewed(item.id)}
           onComment={() => openFileComment(item.id)}
         />
       ) : undefined}
