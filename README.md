@@ -39,10 +39,11 @@ can comment on.
 
 **Diff** shows every changed file in one scroll. Marking a file reviewed
 collapses its code in place and turns its header lavender. Use the caret to
-collapse or reopen a file without changing its review status. The sidebar still
-groups reviewed files separately and follows the file at the top as you scroll.
-Selecting a file scrolls to its header. Mark files reviewed from their header,
-the file tree (also whole directories), or with <kbd>R</kbd>; <kbd>U</kbd> undoes it.
+collapse or reopen a file without changing its review status. The sidebar keeps
+reviewed files in place with a purple check mark and follows the file at the top
+as you scroll. Selecting a file scrolls to its header. Mark files reviewed from
+their header, the file tree (also whole directories), or with <kbd>R</kbd>;
+<kbd>U</kbd> undoes it.
 
 ### Comment on files, lines and ranges
 
@@ -112,9 +113,10 @@ server restarts, page reloads and browser changes. Use **Clear** to remove
 comments and reviewed marks while keeping your view settings.
 
 Reviewed files are fingerprinted with MD5. On reload or refresh, unchanged
-files stay reviewed; changed files return to Unreviewed with a **New changes
-since review** pill (and a compact **NEW** badge in the file tree). Reviewing
-the file again acknowledges its current contents and clears the warning.
+files stay reviewed. Changed files lose their check mark and get a **New
+changes since review** pill (and a compact **NEW** badge in the file tree).
+Reviewing the file again acknowledges its current contents and clears the
+warning.
 
 ## Run it
 

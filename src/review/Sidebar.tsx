@@ -1,10 +1,10 @@
-import { useCallback, useMemo, type Dispatch, type RefObject, type SetStateAction } from "react";
+import { useCallback, type Dispatch, type RefObject, type SetStateAction } from "react";
 import { BrowserTree, directoryPaths } from "../components/BrowserTree";
 import { LineStats } from "../components/LineStats";
 import { PanelResizeHandle } from "../components/PanelResizeHandle";
 import { MESSAGE_PATH, type Entry } from "../types";
 
-// The file browser: unreviewed and reviewed trees with search and line stats.
+// The file browser: one tree with review status, search, and line stats.
 export function Sidebar({
   tab,
   paths,
@@ -13,7 +13,7 @@ export function Sidebar({
   lineCountsFailed,
   changedFilesOnly,
   hasMessage,
-  reviewed = [],
+  reviewed,
   newChanges,
   reviewScope,
   selected,
@@ -39,7 +39,7 @@ export function Sidebar({
   lineCountsFailed: boolean;
   changedFilesOnly: boolean;
   hasMessage: boolean;
-  reviewed?: string[];
+  reviewed: string[];
   newChanges: ReadonlySet<string>;
   reviewScope: string;
   selected: string;
@@ -53,32 +53,21 @@ export function Sidebar({
   onToggleReviewed: (path: string) => void;
   onToggleDirectoryReviewed: (directory: string) => void;
   revealSelected: boolean;
-  // Visible file order of the unreviewed and reviewed trees, for J/K.
-  treeOrder: RefObject<[string[], string[]]>;
+  // Visible file order of the tree, for J/K.
+  treeOrder: RefObject<string[]>;
   onHide: () => void;
   onResize: (width: number) => void;
   hidden: boolean;
 }) {
-  const [unreviewedPaths, reviewedPaths] = useMemo(
-    () => [
-      paths.filter((path) => !reviewed.includes(path)),
-      paths.filter((path) => reviewed.includes(path)),
-    ],
-    [paths, reviewed],
-  );
-  const messageReviewed = reviewed.includes(MESSAGE_PATH);
-  const reviewedCount = reviewedPaths.length + (hasMessage && messageReviewed ? 1 : 0);
-  const setUnreviewedOrder = useCallback((order: string[]) => {
-    treeOrder.current[0] = order;
-  }, [treeOrder]);
-  const setReviewedOrder = useCallback((order: string[]) => {
-    treeOrder.current[1] = order;
+  const includeMessage = hasMessage && "commit message".includes(search.toLowerCase());
+  const setTreeOrder = useCallback((order: string[]) => {
+    treeOrder.current = order;
   }, [treeOrder]);
   const fileSearch = search.trim().replaceAll("\\", "/").toLowerCase();
   // Stats follow the file search. Repository totals cover changed/untracked
   // files only; unchanged files remain browsable without reading their contents.
-  function groupStats(groupPaths: string[]) {
-    const visible = new Set(groupPaths.filter((path) => path.toLowerCase().includes(fileSearch)));
+  function totalStats() {
+    const visible = new Set(paths.filter((path) => path.toLowerCase().includes(fileSearch)));
     if (tab === "files") {
       const counted = changedFilesOnly
         ? [...new Set(entries.filter((entry) => entry.status !== "D" && visible.has(entry.path))
@@ -118,7 +107,7 @@ export function Sidebar({
         <span className="file-count">
           {paths.length + (hasMessage ? 1 : 0)}
         </span>
-        <LineStats {...groupStats(unreviewedPaths)} />
+        <LineStats {...totalStats()} />
         <button
           className="panel-toggle"
           aria-label="Hide file browser"
@@ -162,67 +151,37 @@ export function Sidebar({
           </svg>
         </button>
       </div>
-      {[false, true].map((done) => {
-        if (done && !reviewedCount) return null;
-        const groupPaths = done ? reviewedPaths : unreviewedPaths;
-        const includeMessage = hasMessage && messageReviewed === done &&
-          "commit message".includes(search.toLowerCase());
-        return (
-          <section
-            key={String(done)}
-            className={`file-section${groupPaths.length || includeMessage ? "" : " no-files"}`}
-            aria-label={done ? "Reviewed" : "Unreviewed"}
-          >
-            {done && <div className="sidebar-caption">
-              <span className="section-label">
-                Reviewed
-                <span className="file-count">
-                  {reviewedCount}
-                </span>
-              </span>
-              <LineStats {...groupStats(groupPaths)} />
-            </div>}
-            {(!!groupPaths.length || includeMessage) && (
-              <BrowserTree
-                key={`${reviewScope}:${includeMessage}:${JSON.stringify(groupPaths)}`}
-                paths={groupPaths}
-                entries={entries}
-                selected={groupPaths.includes(selected) ||
-                  includeMessage && selected === MESSAGE_PATH ? selected : ""}
-                includeMessage={includeMessage}
-                onSelect={onSelect}
-                onOrderChange={done ? setReviewedOrder : setUnreviewedOrder}
-                fileHref={fileHref}
-                scrollRoot={root}
-                scrollKey={JSON.stringify(["explorer", reviewScope, done])}
-                reviewed={done}
-                newChanges={newChanges}
-                onToggleReviewed={onToggleReviewed}
-                onToggleDirectoryReviewed={onToggleDirectoryReviewed}
-                search={search}
-                collapsed={collapsed}
-                reveal={revealSelected}
-                onCollapse={(path, closed) =>
-                  onCollapsedChange((current) => closed
-                    ? [...new Set([...current, path])]
-                    : current.filter((item) => item !== path))
-                }
-              />
-            )}
-            {!done &&
-              !groupPaths.length &&
-              !includeMessage && (
-                <p className="sidebar-empty">
-                  {reviewedCount
-                    ? "All reviewed."
-                    : tab === "files"
-                      ? "No files yet."
-                      : "No changed files."}
-                </p>
-              )}
-          </section>
-        );
-      })}
+      {paths.length || includeMessage ? (
+        <BrowserTree
+          key={`${reviewScope}:${includeMessage}:${JSON.stringify(paths)}`}
+          paths={paths}
+          entries={entries}
+          selected={paths.includes(selected) ||
+            includeMessage && selected === MESSAGE_PATH ? selected : ""}
+          includeMessage={includeMessage}
+          onSelect={onSelect}
+          onOrderChange={setTreeOrder}
+          fileHref={fileHref}
+          scrollRoot={root}
+          scrollKey={JSON.stringify(["explorer", reviewScope])}
+          reviewed={reviewed}
+          newChanges={newChanges}
+          onToggleReviewed={onToggleReviewed}
+          onToggleDirectoryReviewed={onToggleDirectoryReviewed}
+          search={search}
+          collapsed={collapsed}
+          reveal={revealSelected}
+          onCollapse={(path, closed) =>
+            onCollapsedChange((current) => closed
+              ? [...new Set([...current, path])]
+              : current.filter((item) => item !== path))
+          }
+        />
+      ) : (
+        <p className="sidebar-empty">
+          {tab === "files" ? "No files yet." : "No changed files."}
+        </p>
+      )}
     </aside>
   );
 }

@@ -183,7 +183,7 @@ export function Review({
     paths: string[];
     previous: Record<string, string | undefined>;
   }[]>([]);
-  const treeOrder = useRef<[string[], string[]]>([[], []]);
+  const treeOrder = useRef<string[]>([]);
   useEffect(() => {
     const trackInteraction = () => interactionVersion.current++;
     const trackTypingFocus = (event: FocusEvent) => {
@@ -1155,7 +1155,7 @@ export function Review({
   }
 
   function moveFile(offset: number) {
-    const reviewItems = treeOrder.current.flat();
+    const reviewItems = treeOrder.current;
     if (!reviewItems.length) return;
     const current = reviewItems.indexOf(selected);
     const next = current < 0

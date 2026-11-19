@@ -75,8 +75,13 @@ async function reviewRange() {
   if (!await evaluate("Boolean(document.querySelector('.review-range'))"))
     await browser("find", "role", "option", "click", "--name", "Compare a range");
 }
-async function hoverTree(name, section = "Unreviewed") {
-  const item = `document.querySelector('section[aria-label="${section}"] file-tree-container')?.shadowRoot?.querySelector('[role=treeitem][aria-label=${JSON.stringify(name)}]')`;
+const treeHost = "document.querySelector('#file-browser file-tree-container')";
+const treeRoot = `${treeHost}?.shadowRoot`;
+const treeItem = (name) => `${treeRoot}?.querySelector('[role=treeitem][aria-label=${JSON.stringify(name)}]')`;
+const treeCheck = (name) => `${treeItem(name)}?.querySelector('[data-item-section="decoration"] [title^="Reviewed"] > span:last-child')`;
+const treeAction = (label) => `${treeRoot}?.querySelector('[data-type="context-menu-trigger"][aria-label=${JSON.stringify(label)}][data-visible=true]')`;
+async function hoverTree(name) {
+  const item = treeItem(name);
   await wait(item);
   const point = await evaluate(`(() => {
     const rect = ${item}.getBoundingClientRect();
@@ -91,10 +96,8 @@ const viewedReview = `${heading}?.querySelector('.review-toggle')`;
 const viewedReviewed = `(${viewedReview}?.checked ?? (${viewedReview}?.getAttribute('aria-pressed') === 'true'))`;
 const headingLink = ".file-heading:not(.diff-file-heading) a.file-path, .diff-file-heading[data-current] a.file-path";
 const shadow = `(${currentHeading}?.closest('diffs-container') || document.querySelector('diffs-container'))?.shadowRoot`;
-const lineStats = async (section = "Unreviewed") => {
-  const label = section === "Unreviewed"
-    ? "document.querySelector('.sidebar-header .line-stats')?.getAttribute('aria-label')"
-    : `document.querySelector('section[aria-label="${section}"] .line-stats')?.getAttribute('aria-label')`;
+const lineStats = async () => {
+  const label = "document.querySelector('.sidebar-header .line-stats')?.getAttribute('aria-label')";
   await wait(`(${label}) && (${label}) !== 'Counting lines…'`);
   return evaluate(label);
 };
@@ -475,50 +478,36 @@ try {
   assert.equal(await evaluate("Boolean(document.querySelector('.statusbar, .code-footer'))"), false);
   console.log("PASS review has no bottom footers");
   await hoverTree("README.md");
-  await wait(
-    "document.querySelector('section[aria-label=Unreviewed] file-tree-container').hasAttribute('data-file-review-action') && document.querySelector('section[aria-label=Unreviewed] file-tree-container').shadowRoot.querySelector('[aria-label=\"Mark reviewed\"][data-visible=true]')",
-  );
-  await browser("find", "role", "button", "click", "--name", "Mark reviewed", "--exact");
-  await wait(
-    "document.querySelector('section[aria-label=Reviewed] file-tree-container')?.shadowRoot?.querySelector('[role=treeitem][aria-label=\"README.md\"]')",
-  );
-  await hoverTree("README.md", "Reviewed");
-  await wait(
-    "document.querySelector('section[aria-label=Reviewed] file-tree-container').hasAttribute('data-file-review-action') && document.querySelector('section[aria-label=Reviewed] file-tree-container').shadowRoot.querySelector('[aria-label=\"Mark unreviewed\"][data-visible=true]')",
-  );
+  const treePaths = () => evaluate(`Array.from(${treeRoot}.querySelectorAll('[role=treeitem]'), row => row.dataset.itemPath)`);
+  const beforeReviewPaths = await treePaths();
+  await wait(treeAction("Mark reviewed"));
+  await evaluate(`${treeAction("Mark reviewed")}.click()`);
+  await wait(treeCheck("README.md"));
+  assert.deepEqual(await treePaths(), beforeReviewPaths);
+  assert.equal(await evaluate("document.querySelectorAll('#file-browser file-tree-container').length"), 1);
+  assert.equal(await evaluate(`${treeCheck("README.md")}.textContent`), "✓");
+  assert.equal(await evaluate(`getComputedStyle(${treeCheck("README.md")}).color`), "rgb(217, 185, 246)");
+  await hoverTree("README.md");
+  await wait(treeAction("Mark unreviewed"));
   await capture("file-review-hover-action");
-  await evaluate(
-    "document.querySelector('section[aria-label=Reviewed] file-tree-container').shadowRoot.querySelector('[aria-label=\"Mark unreviewed\"]').click()",
-  );
-  await wait(
-    "document.querySelector('section[aria-label=Unreviewed] file-tree-container')?.shadowRoot?.querySelector('[role=treeitem][aria-label=\"README.md\"]')",
-  );
-  const srcDirectory = "document.querySelector('section[aria-label=Unreviewed] file-tree-container').shadowRoot.querySelector('[role=treeitem][aria-label=src]')";
+  await evaluate(`${treeAction("Mark unreviewed")}.click()`);
+  await wait(`!${treeCheck("README.md")}`);
+  const srcDirectory = treeItem("src");
   await click("Collapse all directories");
   await wait(`${srcDirectory}.getAttribute('aria-expanded') === 'false'`);
   await click("Expand all directories");
   await wait(`${srcDirectory}.getAttribute('aria-expanded') === 'true'`);
   console.log("PASS file tree controls collapse and expand all directories");
+  assert.equal(await evaluate(`${srcDirectory}.querySelector('[data-item-section="decoration"]').textContent`), "");
+  assert.match(await evaluate(`${treeItem("shipping.ts")}.querySelector('[data-item-section="decoration"]').textContent`), /[+−]\d/);
   await hoverTree("src");
-  await wait(
-    "document.querySelector('section[aria-label=Unreviewed] file-tree-container').hasAttribute('data-file-review-action') && document.querySelector('section[aria-label=Unreviewed] file-tree-container').shadowRoot.querySelector('[aria-label=\"Mark reviewed\"][data-visible=true]')",
-  );
-  await evaluate(
-    "document.querySelector('section[aria-label=Unreviewed] file-tree-container').shadowRoot.querySelector('[aria-label=\"Mark reviewed\"]').click()",
-  );
-  await wait(
-    "['discount.ts','shipping.ts'].every(p => document.querySelector('section[aria-label=Reviewed] file-tree-container')?.shadowRoot?.querySelector(`[role=treeitem][aria-label=\"${p}\"]`))",
-  );
-  await hoverTree("src", "Reviewed");
-  await wait(
-    "document.querySelector('section[aria-label=Reviewed] file-tree-container').hasAttribute('data-file-review-action') && document.querySelector('section[aria-label=Reviewed] file-tree-container').shadowRoot.querySelector('[aria-label=\"Mark unreviewed\"][data-visible=true]')",
-  );
-  await evaluate(
-    "document.querySelector('section[aria-label=Reviewed] file-tree-container').shadowRoot.querySelector('[aria-label=\"Mark unreviewed\"]').click()",
-  );
-  await wait(
-    "['discount.ts','shipping.ts'].every(p => document.querySelector('section[aria-label=Unreviewed] file-tree-container')?.shadowRoot?.querySelector(`[role=treeitem][aria-label=\"${p}\"]`))",
-  );
+  await wait(treeAction("Mark reviewed"));
+  await evaluate(`${treeAction("Mark reviewed")}.click()`);
+  await wait(`${treeCheck("discount.ts")} && ${treeCheck("shipping.ts")}`);
+  await hoverTree("src");
+  await wait(treeAction("Mark unreviewed"));
+  await evaluate(`${treeAction("Mark unreviewed")}.click()`);
+  await wait(`!${treeCheck("discount.ts")} && !${treeCheck("shipping.ts")}`);
   console.log("PASS directory review action toggles files recursively");
   await browser("press", "Meta+k");
   await browser("wait", '[aria-label="Search commands and keyboard shortcuts"]');
@@ -698,12 +687,11 @@ try {
   await wait(`${heading}.querySelector('.file-path').textContent === 'README.md'`);
   await browser("press", "r");
   await wait(`${heading}.querySelector('.file-path').textContent === 'src/discount.ts'`);
-  assert.equal(
-    await evaluate(
-      "Array.from(document.querySelector('section[aria-label=Reviewed] file-tree-container').shadowRoot.querySelectorAll('[role=treeitem]')).some(item => item.getAttribute('aria-label') === 'README.md')",
-    ),
-    true,
-  );
+  await wait(treeCheck("README.md"));
+  await browser("press", "k");
+  await wait(`${heading}.querySelector('.file-path').textContent === 'README.md'`);
+  await browser("press", "j");
+  await wait(`${heading}.querySelector('.file-path').textContent === 'src/discount.ts'`);
   await browser("press", "f");
   await browser("wait", '[aria-label="Fuzzy find file"]');
   assert.deepEqual(
@@ -778,7 +766,7 @@ try {
   console.log("PASS J selects the first file when none is selected; U undoes review toggles");
   console.log("PASS J/K navigation only considers files matching the search filter");
   console.log("PASS marking reviewed advances in the File Browser but folds in place in the all-files diff");
-  console.log("PASS shortcuts follow sidebar tree order across unreviewed/reviewed sections and wrap");
+  console.log("PASS shortcuts follow sidebar tree order regardless of review status and wrap");
 
   await browser("hover", ".comment");
   assert.deepEqual(await highlightedLines(), [6]);
@@ -1410,7 +1398,7 @@ try {
     }
     requestAnimationFrame(settle);
   })`);
-  const explorerScroller = "document.querySelector('section[aria-label=\"Unreviewed\"] file-tree-container').shadowRoot.querySelector('[data-file-tree-virtualized-scroll=\"true\"]')";
+  const explorerScroller = `${treeRoot}?.querySelector('[data-file-tree-virtualized-scroll="true"]')`;
   await evaluate(`${explorerScroller}.scrollTop = ${explorerScroller}.scrollHeight`);
   await evaluate("document.querySelector('.code-view').scrollTop = 1200");
   await wait(`${explorerScroller}.scrollTop > 0 && document.querySelector('.code-view').scrollTop === 1200`);
@@ -1636,15 +1624,11 @@ try {
   await tree("shipping.ts");
   await wait(`${shadow}?.querySelector('[data-line-type="change-addition"]')`);
   await capture("commit-message-unselected");
-  const unreviewedTree = "document.querySelector('section[aria-label=Unreviewed] file-tree-container')";
-  const unreviewedScroller = `${unreviewedTree}.shadowRoot.querySelector('[data-file-tree-virtualized-scroll=true]')`;
   assert.equal(
-    await evaluate(`${unreviewedTree}.shadowRoot
-      .querySelector('[role=treeitem][aria-label="Commit message"]')
-      .closest('[data-file-tree-virtualized-scroll=true]') === ${unreviewedScroller}`),
+    await evaluate(`${treeItem("Commit message")}.closest('[data-file-tree-virtualized-scroll=true]') === ${explorerScroller}`),
     true,
   );
-  await evaluate(`${unreviewedTree}.shadowRoot.querySelector('[role=treeitem][aria-label="Commit message"]').click()`);
+  await evaluate(`${treeItem("Commit message")}.click()`);
   await wait(
     `${shadow}?.querySelector('pre')?.textContent.includes('Keep domestic shipping at 5.')`,
   );
@@ -1740,21 +1724,10 @@ try {
   console.log(
     "PASS commit with zero file changes still supports message review and comments",
   );
-  const sectionText = (name) =>
-    evaluate(`(() => {
-    const section = document.querySelector('section[aria-label="${name}"]');
-    const items = section?.querySelector('file-tree-container')?.shadowRoot?.querySelectorAll('[role=treeitem]') || [];
-    return (section?.textContent || '') + Array.from(items).map(e => e.getAttribute('aria-label')).join(' ');
-  })()`);
-  const reviewedText = () => sectionText("Reviewed");
+  const reviewedItems = () => evaluate(`Array.from(${treeRoot}.querySelectorAll('[role=treeitem][aria-description="Reviewed"]'), item => item.getAttribute('aria-label'))`);
   await reviewViewed("Mark reviewed");
-  assert.match(await reviewedText(), /Commit message/);
-  assert.match(
-    await evaluate(
-      "document.querySelector('section[aria-label=Unreviewed]').textContent",
-    ),
-    /All reviewed/,
-  );
+  await wait(treeCheck("Commit message"));
+  assert.deepEqual(await reviewedItems(), ["Commit message"]);
   await capture("all-reviewed");
   await browser("reload");
   await wait("document.querySelector('.comment')");
@@ -1767,48 +1740,40 @@ try {
   await wait(
     `${shadow}?.querySelector('pre')?.textContent.includes('Charge 12 for international orders.')`,
   );
-  assert.equal(await reviewedText(), "");
+  assert.deepEqual(await reviewedItems(), []);
   assert.equal(await lineStats(), "6 lines added, 1 lines removed");
   await reviewViewed("Mark reviewed");
+  await wait(treeCheck("Commit message"));
   assert.equal(await lineStats(), "6 lines added, 1 lines removed");
-  assert.equal(await lineStats("Reviewed"), "0 lines added, 0 lines removed");
   await tree("shipping.ts");
   await wait(`${shadow}?.querySelector('[data-line-type="change-addition"]')`);
   await reviewViewed("Mark reviewed");
-  assert.match(await reviewedText(), /Commit message/);
-  assert.match(await reviewedText(), /shipping.ts/);
-  // The message moves between trees even when their file lists stay the same.
+  await wait(treeCheck("shipping.ts"));
+  assert.deepEqual(await reviewedItems(), ["Commit message", "shipping.ts"]);
   await tree("Commit message");
   await wait(`${currentHeading}?.querySelector('.diff-file-caret[aria-expanded=false]') && !${heading}.querySelector('.review-toggle').disabled`);
   await reviewViewed("Mark unreviewed");
-  assert.doesNotMatch(await reviewedText(), /Commit message/);
-  assert.match(await sectionText("Unreviewed"), /Commit message/);
+  await wait(`!${treeCheck("Commit message")}`);
+  assert.deepEqual(await reviewedItems(), ["shipping.ts"]);
   await reviewViewed("Mark reviewed");
-  assert.match(await reviewedText(), /Commit message/);
-  assert.doesNotMatch(await sectionText("Unreviewed"), /Commit message/);
-  assert.equal(await lineStats(), "5 lines added, 0 lines removed");
-  assert.equal(await lineStats("Reviewed"), "1 lines added, 1 lines removed");
+  await wait(treeCheck("Commit message"));
+  assert.equal(await lineStats(), "6 lines added, 1 lines removed");
   await browser("fill", '[aria-label="Find a file"]', "test/");
   assert.equal(await lineStats(), "5 lines added, 0 lines removed");
-  assert.equal(await lineStats("Reviewed"), "0 lines added, 0 lines removed");
+  await wait(`!${treeItem("Commit message")} && !${treeItem("shipping.ts")}`);
   await browser("focus", '[aria-label="Find a file"]');
   await browser("press", "Control+a");
   await browser("press", "Backspace");
-  assert.doesNotMatch(
-    await sectionText("Unreviewed"),
-    /Commit message|shipping\.ts/,
-  );
+  await wait(`${treeCheck("Commit message")} && ${treeCheck("shipping.ts")}`);
   assert.equal(
     await evaluate(
-      "Array.from(document.querySelectorAll('file-tree-container')).reduce((n, e) => n + e.shadowRoot.querySelectorAll('[role=treeitem][aria-selected=true]').length, 0)",
+      `${treeRoot}.querySelectorAll('[role=treeitem][aria-selected=true]').length`,
     ),
     1,
   );
-  assert.deepEqual(
-    await evaluate(
-      "Array.from(document.querySelectorAll('file-tree-container')).map(e => Array.from(e.shadowRoot.querySelectorAll('[data-item-focused=true]')).some(row => getComputedStyle(row, '::before').outlineColor !== 'rgba(0, 0, 0, 0)'))",
-    ),
-    [true, false],
+  assert.equal(
+    await evaluate(`Array.from(${treeRoot}.querySelectorAll('[data-item-focused=true]')).some(row => getComputedStyle(row, '::before').outlineColor !== 'rgba(0, 0, 0, 0)')`),
+    true,
   );
   assert.equal(
     await evaluate(
@@ -1825,6 +1790,7 @@ try {
   await capture("reviewed-files");
   await browser("focus", ".resize-handle.files");
   await browser("press", "Home");
+  assert.ok(await evaluate(`${treeCheck("Commit message")}.getBoundingClientRect().width > 0`));
   await capture("line-stats-narrow");
   await resizePanel("files", 72);
   await tree("shipping.test.ts");
@@ -1841,22 +1807,12 @@ try {
   await reviewViewed("Mark unreviewed");
   await wait(`${shadow}?.querySelector('pre')?.textContent.includes('console.assert')`);
   await browser("fill", '[aria-label="Find a file"]', "shipping.ts");
-  await wait(
-    "document.querySelector('section[aria-label=Reviewed] file-tree-container')?.shadowRoot?.querySelector('[role=treeitem]')",
-  );
-  assert.equal(
-    await evaluate("Array.from(document.querySelectorAll('file-tree-container')).filter(tree => tree.shadowRoot.querySelector('[role=treeitem][aria-label=\"Commit message\"]')).length"),
-    0,
-  );
+  await wait(`${treeCheck("shipping.ts")} && !${treeItem("Commit message")}`);
   await tree("shipping.ts");
   await browser("focus", '[aria-label="Find a file"]');
   await browser("press", "Control+a");
   await browser("press", "Backspace");
-  await wait("Array.from(document.querySelectorAll('file-tree-container')).some(tree => tree.shadowRoot.querySelector('[role=treeitem][aria-label=\"Commit message\"]'))");
-  const reviewedTree = "document.querySelector('section[aria-label=Reviewed] file-tree-container')";
-  await evaluate(`${reviewedTree}.shadowRoot.querySelector('[data-file-tree-virtualized-scroll=true]').scrollTop = 0`);
-  await wait(`${reviewedTree}.shadowRoot.querySelector('[role=treeitem][aria-label="Commit message"]')`);
-  await evaluate(`${reviewedTree}.shadowRoot.querySelector('[role=treeitem][aria-label="Commit message"]').click()`);
+  await tree("Commit message");
   await wait(`${currentHeading}?.querySelector('.diff-file-caret[aria-expanded=false]')`);
   await evaluate(`${currentHeading}.querySelector('.diff-file-caret').click()`);
   await wait(`${shadow}?.querySelector('pre')?.textContent.includes('Charge 12 for international orders.')`);
@@ -1866,12 +1822,10 @@ try {
   await wait(`${currentHeading}?.dataset.path === 'src/shipping.ts' && ${currentHeading}?.querySelector('.diff-file-caret[aria-expanded=false]')`);
   await reviewViewed("Mark unreviewed");
   await wait(`${shadow}?.querySelector('[data-line-type="change-addition"]')`);
-  assert.doesNotMatch(await reviewedText(), /shipping\.ts/);
-  assert.match(await sectionText("Unreviewed"), /shipping\.ts/);
+  await wait(`${treeItem("shipping.ts")} && !${treeCheck("shipping.ts")}`);
   assert.equal(await lineStats(), "6 lines added, 1 lines removed");
-  assert.equal(await lineStats("Reviewed"), "0 lines added, 0 lines removed");
   console.log(
-    "PASS exact scope and reviewed line totals for File Browser, uncommitted changes and commits; message adds no lines",
+    "PASS exact scope line totals for File Browser, uncommitted changes and commits; review status and messages do not change totals",
   );
   await reviewRange();
   await click("Base revision");
@@ -1882,42 +1836,40 @@ try {
   await browser("press", "Enter");
   await click("Compare");
   await wait(
-    `!Array.from(document.querySelectorAll('file-tree-container')).some(tree => tree.shadowRoot.querySelector('[role=treeitem][aria-label="Commit message"]')) && !${heading}.querySelector('.review-toggle').disabled`,
+    `!${treeItem("Commit message")} && !${heading}.querySelector('.review-toggle').disabled`,
   );
-  assert.equal(await reviewedText(), "");
+  assert.deepEqual(await reviewedItems(), []);
   await reviewViewed("Mark reviewed");
-  assert.match(await reviewedText(), /shipping\.ts/);
+  await wait(treeCheck("shipping.ts"));
   await reviewCommit(f.second);
   await wait(`${currentHeading}?.querySelector('.file-path')?.textContent.startsWith('Commit message') && ${currentHeading}?.querySelector('.diff-file-caret[aria-expanded=false]')`);
-  assert.match(await reviewedText(), /Commit message/);
-  assert.doesNotMatch(await reviewedText(), /shipping\.ts/);
+  await wait(treeCheck("Commit message"));
+  assert.deepEqual(await reviewedItems(), ["Commit message"]);
   await reviewScope("File Browser");
   await tree("shipping.ts");
   await wait(
     `${shadow}?.querySelector('pre')?.textContent.includes('THRESHOLD = 75')`,
   );
   await reviewViewed("Mark reviewed");
-  assert.match(await reviewedText(), /shipping\.ts/);
+  await wait(treeCheck("shipping.ts"));
   await reviewScope("Uncommitted changes");
   await wait(
     `${shadow}?.querySelector('pre')?.textContent.includes('pending = true')`,
   );
-  assert.equal(await reviewedText(), "");
+  assert.deepEqual(await reviewedItems(), []);
   await reviewViewed("Mark reviewed");
-  assert.match(await reviewedText(), /pending-after-load\.ts/);
+  const reviewedPendingFile = treeCheck("pending-after-load.ts");
+  await wait(reviewedPendingFile);
   await waitState(state => Boolean(state.reviewed?.working?.["pending-after-load.ts"]));
   await browser("reload");
-  const reviewedPendingFile = "document.querySelector('section[aria-label=Reviewed] file-tree-container')?.shadowRoot?.querySelector('[role=treeitem][aria-label=\"pending-after-load.ts\"]')";
   await wait(reviewedPendingFile);
-  assert.match(await reviewedText(), /pending-after-load\.ts/);
   await reviewScope("Uncommitted changes");
   await wait(reviewedPendingFile);
-  assert.match(await reviewedText(), /pending-after-load\.ts/);
   await reviewCommit("Document the decision");
   await wait(`${currentHeading}?.querySelector('.file-path')?.textContent.startsWith('Commit message') && ${currentHeading}?.querySelector('.diff-file-caret[aria-expanded=false]')`);
-  assert.match(await reviewedText(), /Commit message/);
+  await wait(treeCheck("Commit message"));
   console.log(
-    "PASS Reviewed moves files and messages without duplicates; search, selection, undo, per-comparison isolation, historical persistence and fingerprinted mutable-view persistence",
+    "PASS review status stays on files and messages in place; search, selection, undo, per-comparison isolation, historical persistence and fingerprinted mutable-view persistence",
   );
   // Cache files from another format version are ignored, never migrated.
   // Write one while no page is open, so the app's unload flush cannot
@@ -2132,7 +2084,7 @@ try {
   await f.write("sync/a.ts", syncSource("a"));
   await f.write("sync/b.ts", syncSource("b"));
   const syncHeader = (path) => `document.querySelector('.diff-file-heading[data-path="${path}"]')`;
-  const selectedTreeItem = "document.querySelector('section[aria-label=Unreviewed] file-tree-container').shadowRoot.querySelector('[role=treeitem][aria-selected=true]')?.getAttribute('aria-label')";
+  const selectedTreeItem = `${treeRoot}?.querySelector('[role=treeitem][aria-selected=true]')?.getAttribute('aria-label')`;
   await browser("open", `${url}/?mode=working&path=sync%2Fa.ts`);
   await wait(`${currentHeading}?.dataset.path === 'sync/a.ts'`);
   const syncHistory = await evaluate("history.length");

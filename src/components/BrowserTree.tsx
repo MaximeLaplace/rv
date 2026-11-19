@@ -46,20 +46,44 @@ type Stat = { additions: number; deletions: number };
 const compact = (n: number) =>
   n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n);
 
-// Line change counts per file and summed per directory ("dir/" keys).
-function diffStats(entries: Entry[]) {
-  const stats = new Map<string, Stat>();
-  for (const entry of entries) {
-    const additions = entry.additions || 0, deletions = entry.deletions || 0;
-    if (!additions && !deletions) continue;
-    for (const key of [entry.path, ...directoryPaths([entry.path])]) {
-      const stat = stats.get(key) || { additions: 0, deletions: 0 };
-      stat.additions += additions;
-      stat.deletions += deletions;
-      stats.set(key, stat);
-    }
+const graphemes = typeof Intl.Segmenter === "function" ? new Intl.Segmenter() : undefined;
+const characters = (text: string) => graphemes
+  ? Array.from(graphemes.segment(text), part => part.segment)
+  : Array.from(text);
+
+function longestFit(length: number, label: (count: number) => string, fits: (text: string) => boolean) {
+  let low = 0, high = length;
+  while (low < high) {
+    const count = Math.ceil((low + high) / 2);
+    if (fits(label(count))) low = count;
+    else high = count - 1;
   }
-  return stats;
+  return label(low);
+}
+
+function fitLabel(name: string, folder: boolean, fits: (text: string) => boolean) {
+  if (fits(name)) return name;
+  if (folder) {
+    const separator = name.lastIndexOf(" / ");
+    if (separator < 0) return name; // Let CSS end-truncate an individual folder.
+    const leaf = name.slice(separator + 3);
+    const tail = `… / ${leaf}`;
+    if (!fits(tail)) return leaf;
+    const ancestors = characters(name.slice(0, separator));
+    return longestFit(ancestors.length, count => ancestors.slice(0, count).join("").trimEnd() + tail, fits);
+  }
+
+  const extension = name.match(/.+?((?:\.(?:test|spec|d))?\.[a-z0-9]{1,6})$/i)?.[1] || "";
+  const stem = characters(name.slice(0, name.length - extension.length));
+  // Give the prefix most of the space, but keep enough of the end to tell
+  // similarly named files apart. Fall back to end ellipsis on very tight rows.
+  const middle = (count: number) => {
+    const suffix = Math.floor(count * 0.4);
+    return stem.slice(0, count - suffix).join("") + "…" +
+      (suffix ? stem.slice(-suffix).join("") : "") + extension;
+  };
+  if (stem.length < 4 || !fits(middle(3))) return name;
+  return longestFit(stem.length - 1, middle, fits);
 }
 
 export function directoryPaths(paths: string[]) {
@@ -101,7 +125,7 @@ export function BrowserTree({
   fileHref: (path: string) => string;
   scrollRoot: string;
   scrollKey: string;
-  reviewed: boolean;
+  reviewed: string[];
   newChanges: ReadonlySet<string>;
   onToggleReviewed: (path: string) => void;
   onToggleDirectoryReviewed: (directory: string) => void;
@@ -119,12 +143,26 @@ export function BrowserTree({
   const collapseRef = useRef(onCollapse);
   const collapsedRef = useRef(collapsed);
   const searchRef = useRef(search);
-  const entryByPath = useMemo(
-    () => new Map(entries.map((entry) => [entry.path, entry])),
-    [entries],
+  const fileStats = useMemo(() => {
+    const stats = new Map<string, Stat>();
+    for (const entry of entries) {
+      const additions = entry.additions || 0, deletions = entry.deletions || 0;
+      if (!additions && !deletions) continue;
+      const stat = stats.get(entry.path) || { additions: 0, deletions: 0 };
+      stat.additions += additions;
+      stat.deletions += deletions;
+      stats.set(entry.path, stat);
+    }
+    return stats;
+  }, [entries]);
+  const reviewedPaths = useMemo(() => new Set(reviewed), [reviewed]);
+  const unreviewedDirectories = useMemo(
+    () => new Set(directoryPaths(paths.filter(path => !reviewedPaths.has(path)))),
+    [paths, reviewedPaths],
   );
-  const newChangesRef = useRef(newChanges);
-  newChangesRef.current = newChanges;
+  const decorations = { fileStats, reviewedPaths, newChanges };
+  const decorationsRef = useRef(decorations);
+  decorationsRef.current = decorations;
   toggleReviewedRef.current = onToggleReviewed;
   toggleDirectoryRef.current = onToggleDirectoryReviewed;
   collapseRef.current = onCollapse;
@@ -139,8 +177,6 @@ export function BrowserTree({
   selectRef.current = (path) => {
     if (treePaths.includes(path)) onSelect(fromTree(path));
   };
-  const statsRef = useRef(new Map<string, Stat>());
-  statsRef.current = useMemo(() => diffStats(entries), [entries]);
   const { model } = useFileTree({
     paths: treePaths,
     sort: (left, right) =>
@@ -172,36 +208,58 @@ export function BrowserTree({
       },
     },
     unsafeCSS: `
-      :host { container-type: inline-size; }
+      :host {
+        container-type: inline-size;
+        --trees-padding-inline-override: 8px;
+        --trees-item-padding-x-override: 4px;
+        --trees-item-row-gap-override: 4px;
+        --trees-level-gap-override: 4px;
+        --trees-icon-width-override: 14px;
+        --trees-action-lane-width-override: 18px;
+        --trees-git-lane-width-override: var(--trees-action-lane-width-override);
+      }
       :host(:not([data-file-review-action])) [data-type="context-menu-anchor"] {
         display: none !important;
       }
       [data-item-section="content"] { flex: 1; }
-      [data-item-section="decoration"] {
-        flex: 0 1 auto;
-        font-size: 10px;
-        font-variant-numeric: tabular-nums;
-      }
-      [data-item-section="decoration"] > span { gap: 4px; }
-      @container (max-width: 200px) {
-        [data-item-type="file"] > [data-item-section="decoration"] { display: none; }
+      /* One review/Git slot instead of an empty action column on every row. */
+      [data-item-section="action"],
+      [data-item-section="git"]:empty,
+      [data-item-context-hover="true"] > [data-item-section="git"] { display: none; }
+      [data-item-context-hover="true"] > [data-item-section="action"] { display: flex; }
+      /* Replace the library's per-segment clipping; the original accessible
+         name is still on the row, along with the full path tooltip. */
+      [data-tree-label] { white-space: pre; }
+      [data-tree-label] > * { display: none; }
+      [data-tree-label]::before {
+        content: attr(data-tree-label);
+        content: attr(data-tree-label) / "";
       }
       [data-type="context-menu-trigger"] svg { display: none; }
       [data-type="context-menu-trigger"]::before {
-        content: "${reviewed ? "↩" : "✓"}";
+        content: "✓";
         font-size: 13px;
         font-weight: 600;
       }
-      [data-item-section="decoration"] { flex: 1 0 auto; }
+      [data-type="context-menu-trigger"][data-mark-unreviewed]::before { content: "↩"; }
+      [data-item-section="decoration"] { flex: none; }
+      [data-item-section="decoration"]:empty { display: none; }
       [data-item-section="decoration"] > span {
         gap: 4px;
         overflow: visible;
         font-size: 11px;
+        font-weight: 700;
         font-variant-numeric: tabular-nums;
       }
       [data-item-section="decoration"] > span > span:empty { display: none; }
-      [data-item-type="file"] > [data-item-section="decoration"] { font-weight: 700; }
-      [data-item-type="folder"] > [data-item-section="decoration"] { opacity: 0.55; }
+      [data-item-section="decoration"] > span[title^="Reviewed"] > span:last-child {
+        font-size: 13px;
+        line-height: 1;
+      }
+      @container (max-width: 200px) {
+        [data-item-section="decoration"]:not(:has(> span[title^="Reviewed"])),
+        [data-item-section="decoration"] > span > span:not(:last-child) { display: none; }
+      }
       [data-item-section="decoration"] > span[title^="New changes since review"] > span:first-child {
         border: 1px solid var(--accent-border);
         border-radius: 999px;
@@ -213,19 +271,24 @@ export function BrowserTree({
       }
     `,
     renderRowDecoration: ({ row }) => {
-      const stat = statsRef.current.get(
-        row.kind === "directory" ? row.path.replace(/\/?$/, "/") : row.path,
-      );
-      const changed = row.kind === "file" && newChangesRef.current.has(fromTree(row.path));
-      if (!stat && !changed) return null;
-      const counts = stat ? `${stat.additions} lines added, ${stat.deletions} lines removed` : "";
+      if (row.kind !== "file") return null;
+      const path = fromTree(row.path);
+      const { fileStats, reviewedPaths, newChanges } = decorationsRef.current;
+      const stat = fileStats.get(path);
+      const done = reviewedPaths.has(path);
+      const changed = newChanges.has(path);
+      if (!stat && !done && !changed) return null;
       return {
         text: "",
-        title: changed ? `New changes since review${counts ? ` · ${counts}` : ""}` : counts,
+        title: [
+          done ? "Reviewed" : changed ? "New changes since review" : "",
+          stat ? `${stat.additions} lines added, ${stat.deletions} lines removed` : "",
+        ].filter(Boolean).join(" · "),
         parts: [
           ...(changed ? [{ text: "NEW", color: "var(--accent)" }] : []),
-          { text: stat?.additions ? `+${compact(stat.additions)}` : "", color: row.kind === "directory" ? "#a2aec0" : "#66d98b" },
-          { text: stat?.deletions ? `−${compact(stat.deletions)}` : "", color: row.kind === "directory" ? "#a2aec0" : "#ff7b72" },
+          { text: stat?.additions ? `+${compact(stat.additions)}` : "", color: "#66d98b" },
+          { text: stat?.deletions ? `−${compact(stat.deletions)}` : "", color: "#ff7b72" },
+          { text: done ? "✓" : "", color: "var(--reviewed)" },
         ],
       };
     },
@@ -235,9 +298,9 @@ export function BrowserTree({
     })),
   });
   useEffect(() => {
-    // Tree options are initial-only; repaint mounted rows when counts change.
+    // Tree options are initial-only; repaint mounted rows when decorations change.
     if (model.getFileTreeContainer()?.isConnected) model.render({});
-  }, [model, entryByPath, newChanges]);
+  }, [model, fileStats, reviewedPaths, newChanges]);
   useEffect(() => {
     const updateOrder = () => {
       onOrderChange(
@@ -346,48 +409,89 @@ export function BrowserTree({
   }, [model, scrollRoot, scrollKey]);
   useEffect(() => {
     let observer: MutationObserver | undefined;
+    let resizeObserver: ResizeObserver | undefined;
     const frame = requestAnimationFrame(() => {
       const host = model.getFileTreeContainer();
       const root = host?.shadowRoot;
       if (!host || !root) return;
-      const label = reviewed ? "Mark unreviewed" : "Mark reviewed";
-      const updateAction = () => {
-        const message = root.querySelector(
-          `[data-type="item"][data-item-path=${JSON.stringify(MESSAGE_TREE_PATH)}]`,
-        );
-        if (message) {
-          message.setAttribute("aria-label", "Commit message");
-          const content = message.querySelector('[data-item-section="content"]');
-          if (content && content.textContent !== "Commit message")
-            content.textContent = "Commit message";
+      const canvas = document.createElement("canvas").getContext("2d");
+      const labels = new Map<HTMLElement, string>();
+      const layout = (content: HTMLElement, name: string) => {
+        const row = content.parentElement!;
+        const width = content.clientWidth - 1; // Allow for integer DOM width rounding.
+        const style = getComputedStyle(content);
+        if (canvas) canvas.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+        const text = canvas ? fitLabel(name, row.dataset.itemType === "folder",
+          value => canvas.measureText(value).width <= width) : name;
+        if (content.dataset.treeLabel !== text) content.dataset.treeLabel = text;
+      };
+      // Only mounted (virtualized) labels need fitting. Resizing a panel or
+      // changing a row's decorations changes its actual label width.
+      resizeObserver = new ResizeObserver(entries => {
+        for (const { target } of entries) {
+          const content = target as HTMLElement;
+          const name = labels.get(content);
+          if (name) layout(content, name);
         }
-        const hovered = root.querySelector(
+      });
+      const updateRows = (mutations?: MutationRecord[]) => {
+        for (const content of labels.keys()) {
+          if (root.contains(content)) continue;
+          resizeObserver?.unobserve(content);
+          labels.delete(content);
+        }
+        const refit = new Set(mutations?.filter(mutation => mutation.attributeName === "data-item-search-match")
+          .map(mutation => mutation.target));
+        for (const row of root.querySelectorAll<HTMLElement>('[data-type="item"][data-item-path]')) {
+          const path = row.dataset.itemPath!;
+          const name = path === MESSAGE_TREE_PATH ? "Commit message" : row.getAttribute("aria-label");
+          const content = row.querySelector<HTMLElement>('[data-item-section="content"]');
+          if (name && content) {
+            if (path === MESSAGE_TREE_PATH && row.getAttribute("aria-label") !== name)
+              row.setAttribute("aria-label", name);
+            const title = path === MESSAGE_TREE_PATH ? name : path;
+            if (row.title !== title) row.title = title;
+            if (labels.get(content) !== name || refit.has(row)) {
+              if (!labels.has(content)) resizeObserver?.observe(content);
+              labels.set(content, name);
+              layout(content, name);
+            }
+          }
+          if (row.dataset.itemType !== "file") continue;
+          const done = reviewedPaths.has(fromTree(path));
+          if (done) row.setAttribute("aria-description", "Reviewed");
+          else row.removeAttribute("aria-description");
+        }
+        const hovered = root.querySelector<HTMLElement>(
           '[data-type="item"][data-item-context-hover="true"]',
         );
-        const type = hovered?.getAttribute("data-item-type");
-        host.toggleAttribute(
-          "data-file-review-action",
-          type === "file" || type === "folder",
-        );
+        const type = hovered?.dataset.itemType;
+        const path = hovered?.dataset.itemPath || "";
+        host.toggleAttribute("data-file-review-action", type === "file" || type === "folder");
+        const done = type === "folder" ? !unreviewedDirectories.has(path.replace(/\/?$/, "/"))
+          : type === "file" && reviewedPaths.has(fromTree(path));
+        const label = done ? "Mark unreviewed" : "Mark reviewed";
         const trigger = root.querySelector('[data-type="context-menu-trigger"]');
+        trigger?.toggleAttribute("data-mark-unreviewed", done);
         trigger?.setAttribute("aria-label", label);
         trigger?.setAttribute("title", label);
         trigger?.removeAttribute("aria-haspopup");
       };
-      observer = new MutationObserver(updateAction);
+      observer = new MutationObserver(updateRows);
       observer.observe(root, {
         subtree: true,
         childList: true,
         attributes: true,
-        attributeFilter: ["data-item-context-hover"],
+        attributeFilter: ["data-item-context-hover", "data-item-path", "data-item-search-match"],
       });
-      updateAction();
+      updateRows();
     });
     return () => {
       cancelAnimationFrame(frame);
       observer?.disconnect();
+      resizeObserver?.disconnect();
     };
-  }, [model, reviewed]);
+  }, [model, reviewedPaths, unreviewedDirectories]);
   return (
     <FileTree
       model={model}

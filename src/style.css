@@ -534,24 +534,6 @@ button.panel-toggle:hover {
 .sidebar-header .panel-toggle {
   margin-left: 2px;
 }
-.sidebar-caption {
-  padding: 16px 12px 12px;
-  text-transform: uppercase;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 1px;
-  color: var(--muted);
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.section-label {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  white-space: nowrap;
-}
 .file-count {
   letter-spacing: 0;
   font-weight: 400;
@@ -586,18 +568,6 @@ button.panel-toggle:hover {
 }
 .lines-total {
   color: var(--muted);
-}
-.file-section {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-}
-.file-section.no-files {
-  flex: 0 0 auto;
-}
-.file-section + .file-section {
-  border-top: 1px solid var(--border);
 }
 .tree-toolbar {
   display: flex;
