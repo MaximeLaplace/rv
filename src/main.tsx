@@ -37,6 +37,10 @@ function App() {
     <Review
       info={loaded.info}
       state={loaded.state}
+      applyInfo={(info) => {
+        infoRequest.current++;
+        setLoaded((current) => current ? { ...current, info } : current);
+      }}
       refreshInfo={async () => {
         const request = ++infoRequest.current;
         const info = await api<Info>("info", { refresh: crypto.randomUUID() });

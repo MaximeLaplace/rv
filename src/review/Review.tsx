@@ -32,6 +32,7 @@ import { Sidebar } from "./Sidebar";
 import { CommentsPanel } from "./CommentsPanel";
 import { AgentConnectionDialog, AgentStatusCard } from "./AgentHandoff";
 import { useAgentConnection } from "./useAgentConnection";
+import { useScopeRefresh, type ReviewScope } from "./useScopeRefresh";
 import { DiffFileHeader, FileHeading } from "./FileHeading";
 import { CopiedPromptDialog, LinePicker, PromptDialog } from "./Dialogs";
 import { useKeyboard } from "./useKeyboard";
@@ -61,10 +62,12 @@ export function Review({
   info,
   state,
   refreshInfo,
+  applyInfo,
 }: {
   info: Info;
   state: SavedState;
   refreshInfo: () => Promise<Info>;
+  applyInfo: (info: Info) => void;
 }) {
   const [saved] = useState(() => ({ ...readPreferences(state.view), ...readLocation(info) }));
   const [restoring, setRestoring] = useState(saved.mode !== "working");
@@ -80,6 +83,10 @@ export function Review({
   const [from, setFrom] = useState(saved.from);
   const [to, setTo] = useState(saved.to);
   const [comparison, setComparison] = useState<Comparison>(info.working);
+  // Keep the applied refs separate from picker drafts and resolved commit IDs.
+  const [appliedScope, setAppliedScope] = useState<ReviewScope>({
+    mode: saved.mode, from: saved.base, to: saved.target,
+  });
   const [totals, setTotals] = useState<{
     info: Info;
     counts?: Record<string, number | null>;
@@ -459,6 +466,8 @@ export function Review({
             });
       if (id !== comparisonRequest.current) return;
       setComparison(result);
+      setAppliedScope(nextMode === "working" ? { mode: "working" }
+        : { mode: nextMode, from: nextFrom, to: nextTo });
       if (nextMode === "commit") setTo(result.target);
       setSelected((current) => {
         const kept = result.entries.some((entry) => entry.path === current);
@@ -475,6 +484,38 @@ export function Review({
       if (id === comparisonRequest.current) setComparing(false);
     }
   }
+
+  const pollScope = tab === "files" ? { mode: "files" } : appliedScope;
+  const autoRefreshError = useScopeRefresh(pollScope,
+    restoring || comparing || loading || submitting || markingReviewed || !!dialog ||
+    !!editing || !!range || !!linePreview || !!fileCommentPath || !!draft || !!generalDraft || !!pendingComment,
+    async (isCurrent) => {
+      const request = comparisonRequest.current;
+      const revision = viewRefresh.current;
+      const refresh = crypto.randomUUID();
+      const nextInfo = await api<Info>("info", { refresh });
+      const nextComparison = pollScope.mode === "files" || pollScope.mode === "working"
+        ? nextInfo.working
+        : await api<Comparison>("compare", {
+            mode: pollScope.mode, from: pollScope.from || "", to: pollScope.to || "", refresh,
+          });
+      if (!isCurrent() || request !== comparisonRequest.current || revision !== viewRefresh.current)
+        return false;
+      // Apply the whole snapshot together, without resetting comments, drafts,
+      // filters, layout or the selected file. Existing scroll restoration is reused.
+      replaceURL.current = true;
+      applyInfo(nextInfo);
+      parsedDiffs.current.clear();
+      setContentRevision(++viewRefresh.current);
+      if (pollScope.mode !== "files") setComparison(nextComparison);
+      setSelected(current => {
+        if (pollScope.mode === "files" && !current) return current;
+        const paths = pollScope.mode === "files" ? nextInfo.files : nextComparison.entries.map(entry => entry.path);
+        return paths.includes(current) || (current === MESSAGE_PATH && pollScope.mode === "commit")
+          ? current : pollScope.mode === "commit" ? MESSAGE_PATH : paths[0] || "";
+      });
+      return true;
+    });
 
   const singleSide = tab === "changes" && !messageView && viewerMode !== "diff"
     ? viewerMode === "old" ? "deletions" : "additions"
@@ -886,6 +927,8 @@ export function Review({
             });
         if (id !== comparisonRequest.current) return;
         setComparison(result);
+        setAppliedScope(nextMode === "working" ? { mode: "working" }
+          : { mode: nextMode, from: base, to: target });
         setMode(nextMode);
         setFrom(result.base);
         setTo(result.target || nextInfo.commits[0]?.id || "");
@@ -1366,7 +1409,7 @@ export function Review({
         <button
           className="refresh"
           onClick={() => location.reload()}
-          title="Reload files and commits; keep your view and saved comments"
+          title="Changes update automatically; reload manually while keeping your view and saved comments"
         >
           ↻ <span>Refresh</span>
         </button>
@@ -1490,9 +1533,9 @@ export function Review({
             onToggleReviewed={toggleReviewed}
             onComment={() => openFileComment(selected)}
           />
-          {error && (
+          {(error || autoRefreshError) && (
             <div role="alert" className="error">
-              {error}
+              {error || autoRefreshError}
             </div>
           )}
           <div
@@ -1520,7 +1563,7 @@ export function Review({
                     ? "You have no uncommitted changes."
                     : "These revisions have no file differences."}
                   <br />
-                  New changes appear when you refresh.
+                  New changes appear automatically.
                 </p>
               </div>
             ) : diffAll ? (

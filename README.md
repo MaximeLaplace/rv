@@ -112,11 +112,11 @@ local disk, outside the repository, in one readable directory per opened path â€
 server restarts, page reloads and browser changes. Use **Clear** to remove
 comments and reviewed marks while keeping your view settings.
 
-Reviewed files are fingerprinted with MD5. On reload or refresh, unchanged
-files stay reviewed. Changed files lose their check mark and get a **New
-changes since review** pill (and a compact **NEW** badge in the file tree).
-Reviewing the file again acknowledges its current contents and clears the
-warning.
+Reviewed files are fingerprinted with MD5. After an automatic or manual
+refresh, unchanged files stay reviewed. Changed files lose their check mark and
+get a **New changes since review** pill (and a compact **NEW** badge in the file
+tree). Reviewing the file again acknowledges its current contents and clears
+the warning.
 
 ## Run it
 
@@ -134,9 +134,16 @@ Then run `rv` inside any repository:
 rv
 ```
 
-rv opens a browser and serves a read-only review UI on localhost. Refresh the
-page (or press <kbd>Shift</kbd>+<kbd>R</kbd>) when you want to load new
-repository changes; nothing is written back to the repository.
+rv opens a browser and serves a read-only review UI on localhost. The current
+scope updates automatically: while the tab is visible, rv checks a small change
+fingerprint about every three seconds and reloads content only when it changes.
+Working-tree checks use Git status and file metadata instead of loading full
+diffs or file contents into the browser; commit/range checks only resolve their
+refs. Polling pauses in hidden tabs,
+and updates wait while you're composing comments. Saved comments, review marks,
+selection and layout stay intact; changed reviewed files get the existing **New
+changes since review** warning. You can still refresh manually with the toolbar
+or <kbd>Shift</kbd>+<kbd>R</kbd>. Nothing is written back to the repository.
 
 Open directly on uncommitted changes, a single commit, or a commit range:
 
@@ -219,7 +226,7 @@ The flow is simple:
 1. **Your agent** starts `rv ensure --agent`, shares the URL, and runs `rv --wait`.
 2. **You** review in the browser, save comments, and click **Submit to Agent**.
 3. **Your agent** receives the feedback, makes changes, and runs `rv --wait` again.
-4. **You** refresh the page and review the next round. No server restart needed.
+4. **You** review the next round as changes appear automatically. No server restart needed.
 
 The handoff card shows **Agent is waiting** when an agent is actively waiting,
 or the number of queued reviews when it isn't. Submission clears the saved

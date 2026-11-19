@@ -1,8 +1,8 @@
 import type { SavedState, Source } from "../types";
 
-// Deliberately no polling, focus revalidation, websocket, or filesystem watcher.
-// Responses are cached per URL for this page. A request with a new refresh
-// value supersedes the older cached responses of its route.
+// Content responses are cached per URL. Scope polling uses a separate small
+// fingerprint endpoint; only a detected change requests a new refresh value,
+// superseding the older cached responses of its route.
 const requests = new Map<string, { route: string; refresh?: string; promise: Promise<unknown> }>();
 export function api<T>(
   route: string,

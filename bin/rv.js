@@ -29,7 +29,7 @@ const usage = `Usage: rv [directory] [--working | --commit <ref> | --range <from
        rv [directory] --wait
        rv --skill
 
-Review the current repository in your browser. Refresh the page to see new changes.
+Review the current repository in your browser. New changes appear automatically.
 If the default port 4444 is busy, a free port is picked automatically.
 --host 0.0.0.0 allows remote access; use only behind a trusted proxy.
 
@@ -170,7 +170,7 @@ async function main() {
   }
   const url = instance.url + view;
   console.log(
-    `\n  rv → ${url}\n  ${repo.root}\n\n  Refresh the page to update. Ctrl+C to stop.\n`,
+    `\n  rv → ${url}\n  ${repo.root}\n\n  New changes appear automatically. Ctrl+C to stop.\n`,
   );
   if (!values["no-open"]) openBrowser(url);
 }

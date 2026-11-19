@@ -203,6 +203,8 @@ export function createApp(repo, { allowRemote = false, agent = null, connectAgen
         const p = url.searchParams;
         if (url.pathname === "/api/info")
           return send(200, { ...await repo.info(), agent: Boolean(agent), agentConnectable: Boolean(connectAgent), instanceId, pid: process.pid });
+        if (url.pathname === "/api/revision")
+          return send(200, { revision: await repo.revision(p.get("mode") || "working", p.get("from") || "", p.get("to") || "") });
         if (url.pathname === "/api/line-counts")
           return send(200, await repo.lineCounts());
         if (url.pathname === "/api/compare")

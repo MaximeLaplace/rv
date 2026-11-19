@@ -316,6 +316,47 @@ export async function repository(directory) {
     };
   }
 
+  async function revision(mode = "working", from = "", to = "") {
+    if (!["files", "working", "commit", "range"].includes(mode))
+      throw new Error("Unknown comparison mode.");
+    // Historical contents are immutable. Only resolve the requested refs;
+    // working-tree edits must not reload an unrelated commit or range.
+    if (isGit && mode === "commit") return md5(await resolve(to));
+    if (isGit && mode === "range")
+      return md5(JSON.stringify(await Promise.all([resolve(from), resolve(to)])));
+
+    let names, status = "", currentHead = null, branch = "";
+    if (isGit) {
+      [status, currentHead, branch] = await Promise.all([
+        git("status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames", "--", "."),
+        head(),
+        git("symbolic-ref", "--short", "HEAD").then(value => value.trim()).catch(() => ""),
+      ]);
+      // Porcelain paths are repository-relative, even for an opened subdirectory.
+      const prefix = path.relative(gitRoot, root).split(path.sep).join("/");
+      names = split(status).map(record => record.slice(3))
+        .map(name => prefix ? name.slice(prefix.length + 1) : name);
+    } else names = await files();
+
+    // Status alone doesn't change when an already-dirty file is edited again.
+    // Stat only the dirty/untracked files, never read their contents or hash the
+    // whole checkout. ctime also catches same-size edits with restored mtime.
+    const stats = new Array(names.length);
+    const pending = names.entries();
+    await Promise.all(Array.from({ length: Math.min(32, names.length) }, async () => {
+      for (const [index, name] of pending) {
+        try {
+          const stat = await lstat(path.join(root, name), { bigint: true });
+          stats[index] = [name, String(stat.mode), String(stat.size), String(stat.mtimeNs), String(stat.ctimeNs)];
+        } catch (error) {
+          if (error.code !== "ENOENT" && error.code !== "ENOTDIR") throw error;
+          stats[index] = [name, null];
+        }
+      }
+    }));
+    return md5(JSON.stringify([currentHead, branch, status, stats]));
+  }
+
   async function lineCounts() {
     let names;
     if (isGit) {
@@ -343,5 +384,5 @@ export async function repository(directory) {
     return counts;
   }
 
-  return { root, info, compare, file, lineCounts };
+  return { root, info, compare, file, lineCounts, revision };
 }

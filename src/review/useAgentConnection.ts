@@ -51,7 +51,7 @@ export function useAgentConnection(enabled: boolean, connectable: boolean) {
 
   useEffect(() => {
     mounted.current = true;
-    // Only handoff status is live; repository files still refresh on demand.
+    // Handoff status is independent of the current review scope's change polling.
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {

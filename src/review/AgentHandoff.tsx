@@ -19,7 +19,7 @@ export function AgentStatusCard({ connection, error, submitted, onSetup }: {
   const description = error || (!enabled ? "Send your review directly, without copy and paste."
     : queued ? "Your feedback is queued. Your agent receives it with rv --wait."
     : waiting ? "Submit your comments when you're ready."
-    : submitted ? "Your agent received the review. Refresh after it makes changes."
+    : submitted ? "Your agent received the review. Its changes appear automatically."
     : "Ask your agent to run rv --wait. You can submit before it starts waiting.");
   return (
     <section className={`agent-card ${tone}`} aria-label="Agent handoff">
@@ -78,7 +78,7 @@ export function AgentConnectionDialog({ root, connection, connecting, error, has
         <ol className="agent-steps">
           <li><span>1</span><div><strong>{connection.enabled ? "Handoff is enabled" : "Enable handoff here"}</strong><p>{fallback ? "Restart this server once with the command below, then refresh this page." : "No restart needed. Your comments and review progress stay put."}</p></div></li>
           <li><span>2</span><div><strong>Give your agent the instructions below</strong><p>It runs <code>rv --wait</code> to receive your next review. This does not launch a coding agent for you.</p></div></li>
-          <li><span>3</span><div><strong>Comment, then Submit to Agent</strong><p>Feedback is queued if your agent isn't waiting yet. After it makes changes, refresh and review again.</p></div></li>
+          <li><span>3</span><div><strong>Comment, then Submit to Agent</strong><p>Feedback is queued if your agent isn't waiting yet. Your agent's changes appear automatically for the next review round.</p></div></li>
         </ol>
         <div className="agent-instructions">
           <div><span>{fallback ? "Run once, then refresh" : "For your coding agent"}</span><button onClick={copyInstructions}>{copied ? "✓ Copied" : fallback ? "Copy command" : "Copy instructions"}</button></div>
