@@ -2,6 +2,7 @@
 import { parseArgs, promisify } from "node:util";
 import { execFile, spawn } from "node:child_process";
 import { realpath } from "node:fs/promises";
+import { get as httpGet } from "node:http";
 import { repository } from "../server/repository.js";
 import {
   activeAgentSession,
@@ -12,18 +13,18 @@ import {
 } from "../server/instance.js";
 
 const agentSkill = `Use rv to collect review feedback from the user:
-1. Run "rv ensure --agent" once to start a detached localhost server. It prints the review URL and exits without opening a browser. Share the URL with the user.
+1. Run "rv ensure --agent" to start or reuse a localhost server. New servers run detached. It prints the review URL and exits without opening a browser. Share the URL with the user.
 2. Run "rv --wait". It blocks until the user submits the review, then prints the exact prompt to stdout and exits.
 3. Apply the submitted feedback, then run "rv --wait" again for the next review round.
 
-The browser UI stays open between rounds. A successful submission clears its comments, and submissions made between wait calls remain queued. Do not run ensure between rounds: it always restarts the server and discards queued submissions. Use "rv stop ." when the session is finished.
+The browser UI stays open between rounds. A successful submission clears its comments, and submissions made between wait calls remain queued. Repeating "rv ensure --agent" safely reuses the session and preserves queued submissions and pending waits. Use "rv ensure --restart" only when replacement is needed: it discards queued submissions and interrupts pending waits. Use "rv stop ." when the session is finished.
 
 Alternatively, start "rv --agent" as a long-running process and keep it alive.`;
 
 const usage = `Usage: rv [directory] [--working | --commit <ref> | --range <from>..<to>]
        [--agent] [--port 4444] [--no-open]
        rv ensure [directory] [--working | --commit <ref> | --range <from>..<to>]
-       [--agent] [--port 4444]
+       [--agent] [--port 4444] [--restart]
        rv list
        rv stop [directory]
        rv [directory] --wait
@@ -33,9 +34,11 @@ Review the current repository in your browser. New changes appear automatically.
 If the default port 4444 is busy, a free port is picked automatically.
 --host 0.0.0.0 allows remote access; use only behind a trusted proxy.
 
-ensure restarts the Git working-tree root's servers with this installation,
-prints the URL, and exits. It never opens a browser and only uses localhost.
-The existing port is kept unless --port explicitly overrides it.
+ensure starts or reuses a server for the Git working-tree root, prints its URL,
+and exits. It never opens a browser and only uses localhost. --agent enables
+handoff in place; omitting it preserves an existing agent session.
+--restart replaces the root's servers with this installation, keeping the port
+and agent mode unless --port overrides the port. Changing ports requires --restart.
 list shows registered running local servers (PID, URL, directory).
 stop shuts down the servers for a directory; without a directory it stops all.
 
@@ -49,8 +52,8 @@ Agent integration:
   --wait                Wait for the next submitted prompt and print it
   --skill               Print instructions for coding agents
 
-Use rv ensure --agent for a detached agent session. Run ensure only once per
-session: restarting discards queued prompts and interrupts pending --wait calls.`;
+Use rv ensure --agent to start or reuse an agent session. Repeating ensure is
+safe. --restart discards queued prompts and interrupts pending --wait calls.`;
 
 async function waitForSubmission(root) {
   // Prefer an exact foreground scope, then the working-tree root used by ensure.
@@ -61,17 +64,25 @@ async function waitForSubmission(root) {
   }
   if (!session)
     throw new Error("No active agent session. Start rv --agent or rv ensure --agent first.");
-  const response = await fetch(`${session.url}/api/agent/wait`, {
-    headers: { "X-Rv": "1", "X-Rv-Agent": session.token },
+  // A review can take arbitrarily long. fetch has a five-minute headers
+  // timeout even without AbortSignal.timeout; node:http has no such deadline.
+  const prompt = await new Promise((resolve, reject) => {
+    const request = httpGet(`${session.url}/api/agent/wait`, {
+      headers: { "X-Rv": "1", "X-Rv-Agent": session.token },
+    }, (response) => {
+      let body = "";
+      response.setEncoding("utf8");
+      response.on("data", (chunk) => { body += chunk; });
+      response.on("error", reject);
+      response.on("end", () => {
+        if (response.statusCode >= 200 && response.statusCode < 300) return resolve(body);
+        let message = `Agent session returned HTTP ${response.statusCode}.`;
+        try { message = JSON.parse(body).error || message; } catch {}
+        reject(new Error(message));
+      });
+    });
+    request.on("error", reject);
   });
-  if (!response.ok) {
-    let message = `Agent session returned HTTP ${response.status}.`;
-    try {
-      message = (await response.json()).error || message;
-    } catch {}
-    throw new Error(message);
-  }
-  const prompt = await response.text();
   await new Promise((resolve, reject) =>
     process.stdout.write(`${prompt}\n`, (error) => error ? reject(error) : resolve()),
   );
@@ -93,6 +104,7 @@ async function main() {
       commit: { type: "string" },
       range: { type: "string" },
       agent: { type: "boolean" },
+      restart: { type: "boolean" },
       wait: { type: "boolean" },
       skill: { type: "boolean" },
       help: { type: "boolean", short: "h" },
@@ -139,6 +151,8 @@ async function main() {
     if (failed.length) process.exitCode = 1;
     return;
   }
+  if (values.restart && !ensure)
+    throw new Error("--restart can only be used with rv ensure.");
   if (values["ensure-server"] && (ensure || !process.send))
     throw new Error("--ensure-server is an internal option.");
   if (ensure && !["127.0.0.1", "localhost"].includes(values.host))
@@ -156,7 +170,7 @@ async function main() {
   }
   if (ensure) {
     const root = await worktreeRoot(directory);
-    const instance = await ensureInstance(root, { port, agent: values.agent });
+    const instance = await ensureInstance(root, { port, agent: values.agent, restart: values.restart });
     console.log(instance.url + view);
     return;
   }

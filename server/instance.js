@@ -16,16 +16,35 @@ const LOCK_TIMEOUT = 10_000;
 const INITIALIZE_TIMEOUT = 2000;
 const cli = fileURLToPath(new URL("../bin/rv.js", import.meta.url));
 
-// Restart using the invoking installation, without version detection. Keep the
-// port unless explicitly overridden, so existing browser tabs remain useful.
-export async function ensureInstance(root, { port = null, agent = false } = {}) {
-  await requireBuild();
+// Reuse a healthy server unless replacement is explicitly requested. Keep the
+// port and agent mode on restart, so existing browser tabs remain useful.
+export async function ensureInstance(root, { port = null, agent = false, restart = false } = {}) {
   return withInstanceLock(root, async () => {
-    const existing = await runningInstance(root);
+    const session = await activeAgentSession(root);
+    const existing = await runningInstance(root, session?.url);
+    if (existing && !restart) {
+      if (port !== null && port !== 0 && port !== Number(new URL(existing.url).port))
+        throw new Error(`rv is already running at ${existing.url}. Use rv ensure --restart --port ${port} to change its port.`);
+      if (agent && session?.url !== existing.url) {
+        const response = await fetch(`${existing.url}/api/agent/connection`, {
+          method: "POST",
+          headers: { "X-Rv": "1" },
+          signal: AbortSignal.timeout(5000),
+          redirect: "error",
+        });
+        if (response.status === 404)
+          throw new Error("This server needs a restart. Run rv ensure --restart --agent, then refresh the page.");
+        const connection = await response.json();
+        if (!response.ok || !connection.enabled)
+          throw new Error(connection.error || "Could not enable agent handoff on the running server.");
+      }
+      return existing;
+    }
+    await requireBuild();
     const { failed } = await stopInstances(root);
     if (failed.length) throw new Error(failed.map(({ error }) => error.message).join("; "));
     const nextPort = port ?? (existing ? Number(new URL(existing.url).port) : null);
-    return launchInstance(root, nextPort, agent);
+    return launchInstance(root, nextPort, agent || Boolean(session));
   }, "ensure.lock");
 }
 
@@ -205,8 +224,12 @@ function processAlive(pid) {
   }
 }
 
-async function runningInstance(root) {
-  for (const instance of await readInstances(instanceDir(root))) {
+async function runningInstance(root, preferredUrl) {
+  const instances = await readInstances(instanceDir(root));
+  // Multiple foreground servers can share a root. Prefer the handoff owner so
+  // ensure --agent attaches to it instead of trying to enable a second session.
+  instances.sort((a, b) => Number(b.url === preferredUrl) - Number(a.url === preferredUrl));
+  for (const instance of instances) {
     const running = await probeInstance(instance, root);
     if (running) return running;
   }

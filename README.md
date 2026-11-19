@@ -160,26 +160,35 @@ Use `rv --help` for directory, port, host, and browser options.
 
 ### Background review servers
 
-For agents and scripts, `ensure` starts a detached localhost server, prints
-its URL, and exits without opening a browser:
+For agents and scripts, `ensure` reuses a healthy localhost server or starts a
+new detached one, prints its URL, and exits without opening a browser:
 
 ```sh
-rv ensure [directory]      # restart and print the review URL
-rv ensure --commit HEAD   # review committed changes
+rv ensure [directory]      # start or reuse and print the review URL
+rv ensure --commit HEAD    # review committed changes
+rv ensure --restart        # explicitly replace this repository's servers
 rv list                   # PID, URL, and opened directory
 rv stop /path/to/repo      # stop this directory's servers
 rv stop                   # stop all registered local servers
 ```
 
-Every `ensure` gracefully restarts the directory's registered servers, including
-foreground instances, using the current rv installation. It preserves the port
-unless `--port` overrides it, and keeps comments and reviewed marks. The server
-survives the calling shell or agent; refresh existing tabs after a restart.
-It does not automatically restart after a crash or reboot.
+Repeated `ensure` calls reuse the running server, including a foreground
+instance, without interrupting pending waits or discarding queued feedback.
+`--agent` enables handoff in place if needed; omitting it leaves an existing
+agent session enabled. If several servers exist for the same root, rv prefers
+the one with the active agent session. A conflicting `--port` requires
+`--restart`; `--port 0` accepts any existing port.
+
+`ensure --restart` gracefully replaces the directory's registered servers
+using the current rv installation. It preserves the port unless `--port`
+overrides it, keeps agent mode enabled if it was already on, and keeps comments
+and reviewed marks. Queued feedback is lost and pending waits are interrupted.
+Refresh existing tabs after a restart. New detached servers survive the calling
+shell or agent, but do not automatically restart after a crash or reboot.
 
 The directory defaults to the current directory and resolves to its Git
 working-tree root. Subdirectories and symlinked paths share a server; separate
-worktrees and submodules get their own. Concurrent restarts are serialized.
+worktrees and submodules get their own. Concurrent `ensure` calls are serialized.
 Plain `rv` still opens the exact requested directory in the foreground.
 `list` and `stop` manage registered local servers, not remote ones or servers
 started by versions of rv without this feature.
@@ -189,10 +198,11 @@ directory (`RV_CACHE_DIR` overrides it). Abandoned locks are recovered
 automatically and stale instance records are ignored. Stopping a server does
 not clear review state.
 
-After updating or rebuilding rv, `rv ensure /path/to/repo` replaces that
-repository's servers with the current installation. There is no version
-comparison or background upgrade mechanism; other servers keep their loaded
-code until restarted. Use `rv stop` to shut down all registered local servers.
+After updating or rebuilding rv, `rv ensure /path/to/repo --restart` replaces
+that repository's servers with the current installation. There is no version
+comparison or background upgrade mechanism; without `--restart`, healthy
+servers keep their loaded code. Use `rv stop` to shut down all registered local
+servers.
 
 ### Agent integration
 
@@ -208,12 +218,11 @@ Or start a detached agent session and share the printed URL with the user:
 rv ensure --agent
 ```
 
-Run `ensure` only once per review session, not between review rounds. Each
-invocation restarts the server: submitted prompts queued in memory are lost,
-and pending `rv --wait` calls are interrupted. Consume queued feedback before
-restarting. Include `--agent` on each `ensure` that should enable agent mode;
-without it, the new server starts with handoff disabled (you can enable it
-from the page).
+Repeating `rv ensure --agent` is safe: it reuses the existing session, preserving
+queued prompts and pending `rv --wait` calls. Plain `rv ensure` also leaves an
+existing agent connection enabled. Use `--restart` only when replacement is
+needed, such as after updating rv; consume queued feedback first because a
+restart discards queued prompts and interrupts pending waits.
 
 **Submit to Agent** is always visible. On a regular localhost server, click
 **Connect agent** in the comments panel to enable handoff without restarting.

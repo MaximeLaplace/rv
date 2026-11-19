@@ -52,7 +52,7 @@ export function AgentConnectionDialog({ root, connection, connecting, error, has
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState("");
   const fallback = !connection.enabled && !connection.connectable;
-  const command = fallback ? `rv ensure ${shellQuote(root)} --agent` : `rv ${shellQuote(root)} --wait`;
+  const command = fallback ? `rv ensure ${shellQuote(root)} --restart --agent` : `rv ${shellQuote(root)} --wait`;
   const instructions = fallback ? command
     : `Use rv to collect my review feedback in ${root}. Run ${command}, apply the submitted feedback, then run it again for the next review round. Keep the current rv server running; do not restart it between rounds.`;
   async function copyInstructions() {

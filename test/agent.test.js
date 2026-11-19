@@ -26,8 +26,9 @@ test("--skill prints standalone agent integration instructions", async () => {
     { cwd: tmpdir() },
   );
   assert.equal(stderr, "");
-  assert.match(stdout, /rv ensure --agent.*detached localhost server/);
-  assert.match(stdout, /Do not run ensure between rounds/);
+  assert.match(stdout, /rv ensure --agent.*start or reuse a localhost server/);
+  assert.match(stdout, /safely reuses the session and preserves queued submissions and pending waits/);
+  assert.match(stdout, /rv ensure --restart.*discards queued submissions and interrupts pending waits/);
   assert.match(stdout, /rv --agent.*long-running process/);
   assert.match(stdout, /rv --wait.*prints the exact prompt to stdout/s);
   assert.match(stdout, /run "rv --wait" again/);

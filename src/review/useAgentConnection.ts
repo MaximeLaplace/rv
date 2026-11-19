@@ -19,7 +19,7 @@ export function useAgentConnection(enabled: boolean, connectable: boolean) {
         signal: AbortSignal.timeout(5000),
       });
       if (response.status === 404)
-        throw new Error("This server needs a restart. Run rv ensure --agent, then refresh this page.");
+        throw new Error("This server needs a restart. Run rv ensure --restart --agent, then refresh this page.");
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Could not connect to the review server.");
       if (mounted.current && id === request.current) {
