@@ -468,7 +468,7 @@ try {
   await browser("open", `${url}/?mode=working&path=src%2Fshipping.ts&view=unknown&split=invalid&expanded=invalid`);
   await wait(`${shadow}?.querySelector('[data-line-type="change-deletion"]')`);
   assert.equal(await evaluate("document.querySelector('[aria-label=\"View diff\"]').getAttribute('aria-current')"), "true");
-  assert.equal(await evaluate("document.querySelector('.segmented a:first-child').getAttribute('aria-current')"), "true");
+  assert.equal(await evaluate("document.querySelector('.segmented a:last-child').getAttribute('aria-current')"), "true");
   assert.ok(await evaluate(`Boolean(${shadow}.querySelector('[data-unmodified-lines]'))`));
   await browser("open", url);
   await wait("document.querySelector('.file-tree')");
@@ -666,15 +666,17 @@ try {
   assert.equal(await evaluate("new URL(location.href).searchParams.has('expanded')"), false);
   assert.equal(await evaluate("document.querySelector('#review-comments').hidden"), false);
   console.log("PASS E/C expand and collapse the viewed file diff; M toggles comments");
+  await wait(`${shadow}?.querySelector('[data-diff-type="split"]')`);
+  assert.equal(await evaluate("new URL(location.href).searchParams.has('split')"), false);
   await browser("press", "v");
-  assert.equal(
-    await evaluate("document.querySelector('.segmented a:last-child').getAttribute('aria-current')"),
-    "true",
-  );
-  assert.equal(await evaluate("new URL(location.href).searchParams.get('split')"), "true");
+  await wait(`${shadow}?.querySelector('[data-diff-type="single"]')`);
+  assert.equal(await evaluate("new URL(location.href).searchParams.get('split')"), "false");
   const urlOwnedView = await waitState((state) => state.view && !("split" in state.view));
   assert.equal("expanded" in urlOwnedView.view, false);
+  await browser("reload");
+  await wait(`${shadow}?.querySelector('[data-diff-type="single"]')`);
   await browser("press", "v");
+  await wait(`${shadow}?.querySelector('[data-diff-type="split"]')`);
   assert.equal(await evaluate("new URL(location.href).searchParams.has('split')"), false);
   await browser("press", "g");
   await browser("press", "f");
@@ -1005,6 +1007,8 @@ try {
   console.log(
     "PASS real edge drags resize both panels; widths survive hide/reopen; keyboard, limits and viewport clamps work",
   );
+  await browser("find", "role", "link", "click", "--name", "Unified", "--exact");
+  await wait(`${shadow}?.querySelector('[data-diff-type="single"]')`);
   await line(13, "change-deletion");
   await browser("fill", "#comment-text", "Document why these rates changed.");
   await click("Add comment");
@@ -1476,7 +1480,7 @@ try {
   await wait("document.querySelector('.code-view').scrollTop === 1300");
   assert.deepEqual(
     await evaluate("Array.from(new URL(location.href).searchParams.keys()).sort()"),
-    ["mode", "path", "split", "view"],
+    ["mode", "path", "view"],
   );
   await browser("tab", "close", modeScrollTab.tabId);
   await browser("tab", originalTab);

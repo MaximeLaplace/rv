@@ -72,9 +72,9 @@ comments for later.
 
 Choose **Diff**, **Old**, or **New** to see the comparison or the complete file
 before or after the change. Comments on Old and New use that revision's line
-numbers. Diffs can be unified or split (<kbd>V</kbd>), long lines wrap by
-default (<kbd>W</kbd>), and **Expand all** shows the unchanged lines between
-hunks.
+numbers. Diffs open side by side by default; <kbd>V</kbd> toggles between
+split and unified. Long lines wrap by default (<kbd>W</kbd>), and **Expand all**
+shows the unchanged lines between hunks.
 
 ![A split diff with inline comments](docs/screenshots/split.png)
 
@@ -100,10 +100,10 @@ and look up its shortcut.
 Cmd-click (Ctrl-click on Windows/Linux) or middle-click a filename to open it
 in a new tab. The URL records the selected file and review scope, including
 the revisions for a commit or range, the Diff/Old/New choice (`view=diff`,
-`view=old`, or `view=new`), split diffs, and expanded unchanged lines. Copy or
-bookmark it to return to that view; browser Back/Forward also works. Each tab
-navigates independently. Opening the bare URL starts in the File Browser;
-unsubmitted range choices are temporary and do not survive reload.
+`view=old`, or `view=new`), unified layout (`split=false`), and expanded
+unchanged lines. Copy or bookmark it to return to that view; browser
+Back/Forward also works. Each tab navigates independently. Opening the bare URL
+starts in the File Browser; unsubmitted range choices do not survive reload.
 
 Your review state (comments, reviewed marks, layout preferences) is cached on
 local disk, outside the repository, in one readable directory per opened path —

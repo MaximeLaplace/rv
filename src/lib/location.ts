@@ -36,7 +36,7 @@ export function readLocation(info: Info) {
     selected: params.get("path") ??
       (urlMode === "working" ? info.working.entries[0]?.path || "" : ""),
     viewerMode: (view === "old" || view === "new" ? view : "diff") as ViewerMode,
-    split: params.get("split") === "true",
+    split: params.get("split") !== "false",
     expanded: params.get("expanded") === "true",
   };
 }
@@ -68,7 +68,7 @@ export function viewHref({ tab, comparison, path, viewerMode, split, expanded, c
       : recent === 0 ? "HEAD" : `HEAD~${recent}`);
   }
   if (path) url.searchParams.set("path", path);
-  if (split) url.searchParams.set("split", "true");
+  if (!split) url.searchParams.set("split", "false");
   if (expanded) url.searchParams.set("expanded", "true");
   return `${url.pathname}${url.search}${url.hash}`;
 }
