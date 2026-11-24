@@ -30,8 +30,6 @@ import { formatPrompt, reference } from "../prompt.js";
 import { TextSearchBar, useTextSearch, type TextSearchSource } from "./TextSearch";
 import { Sidebar } from "./Sidebar";
 import { CommentsPanel } from "./CommentsPanel";
-import { AgentConnectionDialog, AgentStatusCard } from "./AgentHandoff";
-import { useAgentConnection } from "./useAgentConnection";
 import { useScopeRefresh, type ReviewScope } from "./useScopeRefresh";
 import { DiffFileHeader, FileHeading } from "./FileHeading";
 import { CopiedPromptDialog, LinePicker, PromptDialog } from "./Dialogs";
@@ -148,12 +146,11 @@ export function Review({
   const [editing, setEditing] = useState<string>();
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState("");
-  const handoff = useAgentConnection(info.agent, info.agentConnectable);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [dialog, setDialog] =
-    useState<"commands" | "finder" | "line" | "prompt" | "copied" | "agent" | null>(null);
+    useState<"commands" | "finder" | "line" | "prompt" | "copied" | null>(null);
   const closeDialog = () => setDialog(null);
   const [reviewPickerRequest, setReviewPickerRequest] = useState(0);
   const [showFiles, setShowFiles] = useState(saved.showFiles);
@@ -1027,13 +1024,25 @@ export function Review({
     setSubmitting(true);
     setSubmitError("");
     try {
-      const response = await fetch("/api/agent/submit", {
+      const send = () => fetch("/api/agent/submit", {
         method: "POST",
         headers: { "X-Rv": "1", "Content-Type": "text/plain" },
         body: prompt,
       });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error);
+      let response = await send();
+      if (response.status === 404) {
+        // No active session. Let the server enable handoff in place if supported.
+        const connection = await fetch("/api/agent/connection", {
+          method: "POST",
+          headers: { "X-Rv": "1" },
+          signal: AbortSignal.timeout(5000),
+        });
+        if (connection.status === 404)
+          throw new Error("Agent handoff is unavailable. Start rv with --agent, or use Copy Prompt.");
+        if (!connection.ok) throw new Error((await connection.json()).error);
+        response = await send();
+      }
+      if (!response.ok) throw new Error((await response.json()).error);
       setComments([]);
       cancelComment();
       setGeneralDraft("");
@@ -1043,30 +1052,12 @@ export function Review({
       setSubmitted(true);
       setShowComments(true);
       saveNow({ comments: [] });
-      void handoff.refresh();
     } catch (error) {
       setSubmitError((error as Error).message || "Could not submit the prompt.");
+      setShowComments(true);
+      setDialog(current => current === "prompt" ? null : current);
     } finally {
       setSubmitting(false);
-    }
-  }
-
-  function sendPrompt() {
-    if (handoff.connection.enabled) void submitPrompt();
-    else {
-      setSubmitError("");
-      setDialog("agent");
-    }
-  }
-
-  async function enableHandoff() {
-    setSubmitError("");
-    try {
-      await handoff.enable();
-      if (comments.length) await submitPrompt();
-      else closeDialog();
-    } catch (error) {
-      setSubmitError((error as Error).message || "Could not enable agent handoff.");
     }
   }
 
@@ -1268,8 +1259,7 @@ export function Review({
     else if (command === "undo") undo();
     else if (command === "save-comment") saveComment();
     else if (command === "copy-prompt" && comments.length) void copyPrompt();
-    else if (command === "submit-prompt" && comments.length) sendPrompt();
-    else if (command === "agent-setup") setDialog("agent");
+    else if (command === "submit-prompt" && comments.length) void submitPrompt();
     else if (command === "preview-prompt" && comments.length) setDialog("prompt");
     else if (command === "toggle-diff" && diffAll) setSplit((value) => !value);
     else if (command === "toggle-wrap") setWrap((value) => !value);
@@ -1445,9 +1435,9 @@ export function Review({
           </button>
           <button
             className="primary copy"
-            disabled={!comments.length || submitting || handoff.connecting}
-            onClick={sendPrompt}
-            title={handoff.connection.enabled ? "Send your comments to the agent; queue them if it isn't waiting yet" : "Connect your agent and send your comments"}
+            disabled={!comments.length || submitting}
+            onClick={submitPrompt}
+            title="Send your comments to the agent; enable local handoff if needed"
           >
             {sendLabel}
             {!!comments.length && <span className="count">{comments.length}</span>}
@@ -1649,12 +1639,6 @@ export function Review({
             oldSide: range.side === "deletions",
           } : null}
           errors={[copyError, submitError, storageError, outdatedError, reviewCheckError, reviewActionError]}
-          handoff={<AgentStatusCard
-            connection={handoff.connection}
-            error={handoff.error}
-            submitted={submitted}
-            onSetup={() => setDialog("agent")}
-          />}
           onPreview={() => setDialog("prompt")}
           onHide={() => setShowComments(false)}
           onResize={setCommentsWidth}
@@ -1679,18 +1663,7 @@ export function Review({
           sendLabel={sendLabel}
           submitting={submitting}
           onCopy={copyPrompt}
-          onSend={sendPrompt}
-          onClose={closeDialog}
-        />
-      )}
-      {dialog === "agent" && (
-        <AgentConnectionDialog
-          root={info.root}
-          connection={handoff.connection}
-          connecting={handoff.connecting || submitting}
-          error={submitError || handoff.error}
-          hasComments={!!comments.length}
-          onEnable={enableHandoff}
+          onSend={submitPrompt}
           onClose={closeDialog}
         />
       )}

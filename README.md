@@ -57,9 +57,9 @@ edit it. General comments cover feedback that isn't tied to a file.
 
 ### Turn comments into a prompt
 
-**Submit to Agent** sends every saved comment to your coding agent. If handoff
-isn't enabled yet, rv offers to connect it in place—no restart needed. The
-comments panel shows whether your agent is waiting or feedback is queued.
+**Submit to Agent** sends every saved comment to your coding agent. On localhost,
+rv enables handoff in place if needed. If the agent isn't waiting yet, rv
+queues the feedback.
 
 **Copy Prompt** (<kbd>Y</kbd>) is always available for a manual handoff, with exact
 file and line references. **Preview** (<kbd>P</kbd>) shows exactly what gets
@@ -224,11 +224,9 @@ existing agent connection enabled. Use `--restart` only when replacement is
 needed, such as after updating rv; consume queued feedback first because a
 restart discards queued prompts and interrupts pending waits.
 
-**Submit to Agent** is always visible. On a regular localhost server, click
-**Connect agent** in the comments panel to enable handoff without restarting.
-If you already have comments, **Submit to Agent** offers **Enable & submit**.
-This connects rv's handoff channel; it does not launch a coding agent.
-**Copy instructions** gives you a message to paste into your existing agent.
+On a regular localhost server, **Submit to Agent** enables handoff if needed
+and submits the feedback without restarting. This does not launch a coding
+agent.
 
 The flow is simple:
 
@@ -237,11 +235,10 @@ The flow is simple:
 3. **Your agent** receives the feedback, makes changes, and runs `rv --wait` again.
 4. **You** review the next round as changes appear automatically. No server restart needed.
 
-The handoff card shows **Agent is waiting** when an agent is actively waiting,
-or the number of queued reviews when it isn't. Submission clears the saved
-comments only after rv accepts the prompt, keeping reviewed marks and leaving
-the server open for another round. **Copy Prompt** remains available in either
-mode. The agent receives one submitted prompt by running:
+Submission clears saved comments only after rv accepts the prompt, keeping
+reviewed marks and leaving the server open for another round. **Copy Prompt**
+remains available for manual handoff. The agent receives one submitted prompt
+by running:
 
 ```console
 $ rv --wait

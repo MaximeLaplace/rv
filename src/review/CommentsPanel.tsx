@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import { PanelResizeHandle } from "../components/PanelResizeHandle";
 import { onCmdEnter } from "../lib/events";
 import { reference } from "../prompt.js";
@@ -23,7 +22,6 @@ export function CommentsPanel({
   onSaveGeneral,
   newComment,
   errors,
-  handoff,
   onPreview,
   onHide,
   onResize,
@@ -48,7 +46,6 @@ export function CommentsPanel({
   // The composer for a new comment on a file or selected lines.
   newComment: { reference: string; file?: boolean; oldSide: boolean } | null;
   errors: string[];
-  handoff: ReactNode;
   onPreview: () => void;
   onHide: () => void;
   onResize: (width: number) => void;
@@ -92,7 +89,6 @@ export function CommentsPanel({
           Clear outdated comments
         </button>
       </div>
-      {handoff}
       <form
         className="general-composer"
         onSubmit={(event) => {
