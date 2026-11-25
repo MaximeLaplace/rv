@@ -23,6 +23,7 @@ export function CommentsPanel({
   newComment,
   errors,
   onPreview,
+  hideTitle,
   onHide,
   onResize,
   hidden,
@@ -47,6 +48,7 @@ export function CommentsPanel({
   newComment: { reference: string; file?: boolean; oldSide: boolean } | null;
   errors: string[];
   onPreview: () => void;
+  hideTitle: string;
   onHide: () => void;
   onResize: (width: number) => void;
   hidden: boolean;
@@ -66,7 +68,7 @@ export function CommentsPanel({
         <button
           className="panel-toggle"
           aria-label="Hide comments"
-          title="Hide comments (M)"
+          title={hideTitle}
           aria-controls="review-comments"
           onClick={onHide}
         >

@@ -11,7 +11,7 @@ export function onPlainClick(action: () => void = () => {}) {
 
 export function onCmdEnter(action: () => void) {
   return (event: KeyboardEvent) => {
-    if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+    if (event.key === "Enter" && event.metaKey !== event.ctrlKey && !event.altKey && !event.shiftKey) {
       event.preventDefault();
       action();
     }
@@ -57,5 +57,5 @@ export function useOutsidePointerDown(
 }
 
 export function isTyping(target: EventTarget | null) {
-  return (target as HTMLElement).matches("input, textarea, select, [contenteditable=true]");
+  return target instanceof HTMLElement && !!target.closest("input, textarea, select, [contenteditable=true]");
 }

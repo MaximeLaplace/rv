@@ -1,19 +1,18 @@
 import { fork } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { once } from "node:events";
-import { access, mkdir, open, readFile, readdir, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
+import { access, mkdir, open, readFile, readdir, rename, rm, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { createAgentChannel, createApp } from "./http.js";
+import { withFileLock } from "./file-lock.js";
 import {
   cacheDir, clearAgentSession, loadAgentSession, saveAgentSession, stateDir,
 } from "./state.js";
 
 const START_TIMEOUT = 15_000;
 const STOP_TIMEOUT = 5000;
-const LOCK_TIMEOUT = 10_000;
-const INITIALIZE_TIMEOUT = 2000;
 const cli = fileURLToPath(new URL("../bin/rv.js", import.meta.url));
 
 // Reuse a healthy server unless replacement is explicitly requested. Keep the
@@ -322,100 +321,8 @@ async function removeRegistration(instance) {
   }
 }
 
-async function withInstanceLock(root, operation, name = "startup.lock") {
-  const dir = instanceDir(root);
-  await mkdir(dir, { recursive: true, mode: 0o700 });
-  const lock = path.join(dir, name);
-  const owner = { pid: process.pid, token: randomUUID() };
-  const deadline = Date.now() + LOCK_TIMEOUT;
-  while (true) {
-    try {
-      await mkdir(lock, { mode: 0o700 });
-      break;
-    } catch (error) {
-      if (error.code !== "EEXIST") throw error;
-      await reapLock(lock);
-      if (Date.now() >= deadline)
-        throw new Error(`Timed out waiting for ${lock}`);
-      await delay(50);
-    }
-  }
-  try {
-    await writeFile(path.join(lock, "owner.json"), JSON.stringify(owner), { mode: 0o600, flag: "wx" });
-    return await operation();
-  } finally {
-    try {
-      const current = JSON.parse(await readFile(path.join(lock, "owner.json"), "utf8"));
-      if (current.token === owner.token)
-        await rm(lock, { recursive: true, force: true });
-    } catch (error) {
-      if (error.code !== "ENOENT") throw error;
-    }
-  }
-}
-
-async function reapLock(lock) {
-  const abandoned = await staleLock(lock);
-  if (!abandoned) return;
-  const claim = path.join(lock, "reaping");
-  try {
-    // Only one waiter may reap a stale directory. Recheck after claiming it:
-    // another waiter could have already replaced it with a fresh lock.
-    await mkdir(claim);
-  } catch (error) {
-    if (error.code === "EEXIST") {
-      if (await staleLock(claim)) await rm(claim, { recursive: true, force: true });
-      return;
-    }
-    if (error.code === "ENOENT") return;
-    throw error;
-  }
-  let discarded;
-  try {
-    await writeFile(path.join(claim, "owner.json"), JSON.stringify({ pid: process.pid }));
-    const current = await stat(lock);
-    // Creating the reaping directory changes its parent's mtime. Preserve the
-    // initial age check, but verify this is still the same abandoned directory.
-    if (current.dev === abandoned.dev && current.ino === abandoned.ino &&
-        await staleLock(lock, true)) {
-      discarded = `${lock}.${randomUUID()}.stale`;
-      await rename(lock, discarded);
-      await rm(discarded, { recursive: true, force: true });
-    }
-  } catch (error) {
-    // A newer owner may have released its lock while we were rechecking it.
-    if (error.code !== "ENOENT") throw error;
-  } finally {
-    if (!discarded) await rm(claim, { recursive: true, force: true });
-  }
-}
-
-async function staleLock(lock, ageChecked = false) {
-  let info;
-  try {
-    info = await stat(lock);
-  } catch (error) {
-    if (error.code === "ENOENT") return null;
-    throw error;
-  }
-  try {
-    const owner = JSON.parse(await readFile(path.join(lock, "owner.json"), "utf8"));
-    if (Number.isInteger(owner?.pid) && owner.pid > 0) {
-      try {
-        process.kill(owner.pid, 0);
-        return null;
-      } catch (error) {
-        if (error.code === "ESRCH") return info;
-        if (error.code === "EPERM") return null;
-        throw error;
-      }
-    }
-  } catch (error) {
-    if (error.code !== "ENOENT" && !(error instanceof SyntaxError)) throw error;
-  }
-  // A crash between mkdir and writing the owner must be recoverable, without
-  // mistaking a lock that is still being initialized for an abandoned one.
-  return ageChecked || Date.now() - info.mtimeMs >= INITIALIZE_TIMEOUT ? info : null;
+function withInstanceLock(root, operation, name = "startup.lock") {
+  return withFileLock(path.join(instanceDir(root), name), operation);
 }
 
 async function launchInstance(root, port, agent) {

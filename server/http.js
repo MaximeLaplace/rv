@@ -2,7 +2,8 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadState, saveState } from "./state.js";
+import { loadShortcuts, loadState, saveState, updateShortcut } from "./state.js";
+import { isEditableCommand, isShortcutBinding } from "./shortcut-bindings.js";
 
 const dist = fileURLToPath(new URL("../dist/", import.meta.url));
 const MAX_STATE = 1024 * 1024;
@@ -118,6 +119,7 @@ export function createApp(repo, { allowRemote = false, agent = null, connectAgen
       if (
         req.method !== "GET" &&
         url.pathname !== "/api/state" &&
+        url.pathname !== "/api/shortcuts" &&
         url.pathname !== "/api/agent/submit" &&
         url.pathname !== "/api/agent/connection"
       )
@@ -131,6 +133,21 @@ export function createApp(repo, { allowRemote = false, agent = null, connectAgen
           return send(403, { error: "Same-origin access only." });
         if (url.pathname === "/api/instance")
           return send(200, { root: repo.root, instanceId, pid: process.pid });
+        if (url.pathname === "/api/shortcuts") {
+          if (req.method === "GET") return send(200, await loadShortcuts());
+          if (req.method !== "PATCH") return send(405, { error: "Unsupported method." });
+          const body = await readBody(req, 4096);
+          if (body === null) return send(413, { error: "Shortcut request is too large." });
+          let change;
+          try { change = JSON.parse(body); } catch { return send(400, { error: "Invalid JSON." }); }
+          const { command, binding } = change || {};
+          if (!isEditableCommand(command) ||
+              binding !== undefined && binding !== null && !isShortcutBinding(binding))
+            return send(400, { error: "Invalid shortcut." });
+          const { bindings, conflict } = await updateShortcut(command, binding);
+          if (conflict) return send(409, { error: "Shortcut conflicts with another command.", conflict });
+          return send(200, bindings);
+        }
         if (url.pathname === "/api/state") {
           // Review state is a browser-independent cache on local disk,
           // served back so it survives restarts, ports and browsers.

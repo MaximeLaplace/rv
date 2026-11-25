@@ -1477,6 +1477,12 @@ diffs-container {
   border: 0;
   background: transparent;
 }
+.shortcut-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.shortcut-heading-actions .text-button { color: var(--link); }
 .shortcut-search {
   display: flex;
   align-items: center;
@@ -1534,9 +1540,11 @@ diffs-container {
   font-size: 9px;
 }
 .shortcut-keys {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 5px;
+  color: var(--muted);
+  font-size: 11px;
 }
 .shortcut-keys small {
   color: var(--muted);
@@ -1570,6 +1578,49 @@ kbd {
   text-align: center;
   color: var(--muted);
   font-size: 12px;
+}
+.shortcut-settings-error {
+  margin: 0 24px 12px;
+  color: var(--danger);
+  font-size: 11px;
+}
+.shortcut-editor {
+  padding: 0 24px 22px;
+  display: grid;
+  gap: 12px;
+}
+.shortcut-editor h3 {
+  margin: 0;
+  font-size: 14px;
+}
+.shortcut-editor p {
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+.shortcut-editor p[role="alert"] { color: var(--danger); }
+.shortcut-recording {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.shortcut-recorder {
+  flex: 1 0 auto;
+  min-height: 46px;
+  background: var(--input);
+  border-style: dashed;
+}
+.shortcut-recorder:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.shortcut-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
 }
 .line-dialog {
   width: min(420px, 90vw);

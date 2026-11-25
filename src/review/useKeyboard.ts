@@ -1,67 +1,55 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { isTyping } from "../lib/events";
-import { shortcuts, type Command } from "../lib/shortcuts";
+import { recordStroke, shortcuts, type Command, type ShortcutOverrides } from "../lib/shortcuts";
+import { bindingsFor, isEditableCommand, isPlainStroke } from "../../server/shortcut-bindings.js";
 
-// Modified shortcuts also work while typing.
-function modifiedCommand(event: KeyboardEvent, key: string): Command | undefined {
-  if (event.altKey) return;
-  if ((event.metaKey || event.ctrlKey) && key === "f") return "find-viewed-file";
-  if ((event.metaKey || event.ctrlKey) && key === "g")
-    return event.shiftKey ? "previous-text-match" : "next-text-match";
-  if (event.metaKey && !event.ctrlKey && key === "k") return "palette";
-}
-
-// Global keyboard shortcuts. escape returns whether it closed or cancelled
-// something; unmodified shortcuts pause while a dialog is open.
-export function useKeyboard({
-  run,
-  escape,
-  dialogOpen,
-}: {
+export function useKeyboard({ run, escape, dialogOpen, overrides }: {
   run: (command: Command) => void;
   escape: () => boolean;
   dialogOpen: boolean;
+  overrides: ShortcutOverrides;
 }) {
-  const sequence = useRef("");
-  const sequenceTimer = useRef<number | undefined>(undefined);
+  const sequence = useRef<{ key: string; expires: number } | null>(null);
+  const map = useMemo(() => {
+    const commands = new Map<string, Command>();
+    const prefixes = new Set<string>();
+    for (const { command } of shortcuts) {
+      if (!isEditableCommand(command)) continue;
+      for (const binding of bindingsFor(command, overrides)) {
+        const [first, second] = binding.split(" ");
+        if (second) prefixes.add(first);
+        commands.set(binding, command);
+      }
+    }
+    return { commands, prefixes };
+  }, [overrides]);
+  useEffect(() => { sequence.current = null; }, [map, dialogOpen]);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      const key = event.key.toLowerCase();
-      const modified = modifiedCommand(event, key);
-      if (modified) {
-        event.preventDefault();
-        run(modified);
-        return;
-      }
+      if (event.defaultPrevented || event.isComposing) return;
       if (event.key === "Escape") {
+        sequence.current = null;
         if (escape()) event.preventDefault();
         return;
       }
-      if (dialogOpen || event.metaKey || event.ctrlKey || event.altKey || isTyping(event.target))
-        return;
+      const stroke = recordStroke(event);
+      if (!stroke || dialogOpen ||
+          ((!event.metaKey && !event.ctrlKey && !event.altKey) && isTyping(event.target))) return;
       const prefix = sequence.current;
-      sequence.current = "";
-      window.clearTimeout(sequenceTimer.current);
-      if (!prefix && key === "g") {
+      if (event.repeat && prefix?.key === stroke) return;
+      sequence.current = null;
+      const pair = prefix && prefix.expires > Date.now() && isPlainStroke(stroke)
+        ? map.commands.get(`${prefix.key} ${stroke}`) : undefined;
+      const command = pair || map.commands.get(stroke);
+      if (command) {
         event.preventDefault();
-        sequence.current = "g";
-        sequenceTimer.current = window.setTimeout(() => {
-          sequence.current = "";
-        }, 1000);
-        return;
+        run(command);
+      } else if (map.prefixes.has(stroke)) {
+        event.preventDefault();
+        sequence.current = { key: stroke, expires: Date.now() + 1000 };
       }
-      const bind = prefix + key;
-      const shortcut =
-        (event.shiftKey && shortcuts.find((item) => item.bind === bind.toUpperCase())) ||
-        shortcuts.find((item) => item.bind === bind);
-      if (!shortcut) return;
-      event.preventDefault();
-      run(shortcut.command);
     };
     document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      window.clearTimeout(sequenceTimer.current);
-    };
-  });
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [run, escape, dialogOpen, map]);
 }

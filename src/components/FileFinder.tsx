@@ -5,12 +5,14 @@ import { MESSAGE_PATH } from "../types";
 import { Modal } from "./Modal";
 
 export function FileFinder({
+  shortcut,
   paths,
   reviewed,
   onSelect,
   fileHref,
   onClose,
 }: {
+  shortcut: string[];
   paths: string[];
   reviewed: string[];
   onSelect: (path: string) => void;
@@ -59,7 +61,7 @@ export function FileFinder({
             }}
             onKeyDown={list.onKeyDown}
           />
-          <kbd>F</kbd>
+          {shortcut.map((key, index) => <kbd key={index}>{key}</kbd>)}
         </div>
         <div className="finder-results" role="listbox" aria-label="Files">
           {matches.map((match, index) => {

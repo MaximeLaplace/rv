@@ -3,11 +3,13 @@ import { LineStats } from "../components/LineStats";
 import { copyText } from "../lib/clipboard";
 import { onPlainClick } from "../lib/events";
 import type { ViewLocation } from "../lib/location";
+import { shortcutTitle, type ShortcutOverrides } from "../lib/shortcuts";
 import type { Entry, ViewerMode } from "../types";
 
 // The viewed file's path, change stats, view controls and review toggle. The
 // all-files diff shows a summary here instead; each file has a DiffFileHeader.
 export function FileHeading({
+  shortcutOverrides,
   path,
   title,
   summary,
@@ -29,6 +31,7 @@ export function FileHeading({
   onToggleReviewed,
   onComment,
 }: {
+  shortcutOverrides: ShortcutOverrides;
   // The selected file or commit message; empty when nothing is shown.
   path: string;
   // Replaces the path, for the commit message.
@@ -99,7 +102,9 @@ export function FileHeading({
             className="expand-all"
             href={href({ expanded: !expanded })}
             aria-current={expanded ? "true" : undefined}
-            title={expanded ? "Collapse unchanged lines (C)" : "Expand all hidden lines (E)"}
+            title={expanded
+              ? shortcutTitle("Collapse unchanged lines", "collapse-diff", shortcutOverrides)
+              : shortcutTitle("Expand all hidden lines", "expand-diff", shortcutOverrides)}
             onClick={onPlainClick(onToggleExpanded)}
           >
             {expanded ? "Collapse all" : "Expand all"}
@@ -109,7 +114,7 @@ export function FileHeading({
           className="wrap-toggle"
           aria-label="Wrap long lines"
           aria-pressed={wrap}
-          title="Wrap long lines (W)"
+          title={shortcutTitle("Wrap long lines", "toggle-wrap", shortcutOverrides)}
           onClick={onToggleWrap}
         >
           Wrap

@@ -90,8 +90,16 @@ and <kbd>K</kbd> move between files.
 
 ### Keyboard first
 
-Press <kbd>?</kbd> or <kbd>⌘</kbd>+<kbd>K</kbd> to search and run any command
-and look up its shortcut.
+Press <kbd>?</kbd> or <kbd>⌘</kbd>+<kbd>K</kbd> to search and run commands and
+look up their shortcuts. Choose **Customize shortcuts**, select a command, then
+record a key, combination, or two-key sequence and save it. You can unbind a
+command or reset it to its default. Escape and the comment composer's
+<kbd>⌘</kbd>/<kbd>Ctrl</kbd>+<kbd>Enter</kbd> remain fixed.
+
+rv saves shortcuts in a shared `shortcuts.json` in its local cache directory,
+not in browser storage. They follow you across repositories, ports, and
+server restarts using that directory. Open tabs pick up changes when focused
+or when you reopen the Commands panel.
 
 ![Running a command from the command launcher](docs/screenshots/commands.gif)
 

@@ -1,6 +1,8 @@
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { withFileLock } from "./file-lock.js";
+import { conflictingCommand, isEditableCommand, isShortcutBinding } from "./shortcut-bindings.js";
 
 // Review state is a cache, not repository data: it lives outside the
 // repository in the platform's cache directory, in one readable directory per
@@ -74,6 +76,26 @@ export function loadState(root) {
 
 export function saveState(root, state) {
   return writeCacheFile(statePath(root), root, state);
+}
+
+// Shortcuts are user-wide, not review state. All ports and repositories using
+// this cache directory read the same file.
+export async function loadShortcuts() {
+  const saved = (await readCacheFile(path.join(cacheDir(), "shortcuts.json"), null))?.bindings;
+  return Object.fromEntries(Object.entries(saved || {}).filter(([command, binding]) =>
+    isEditableCommand(command) && (binding === null || isShortcutBinding(binding))));
+}
+
+export function updateShortcut(command, binding) {
+  return withFileLock(path.join(cacheDir(), "shortcuts.lock"), async () => {
+    const bindings = await loadShortcuts();
+    if (binding === undefined) delete bindings[command];
+    else bindings[command] = binding;
+    const conflict = conflictingCommand(bindings, command);
+    if (conflict) return { conflict };
+    await writeCacheFile(path.join(cacheDir(), "shortcuts.json"), null, { bindings });
+    return { bindings };
+  });
 }
 
 export function loadAgentSession(root) {

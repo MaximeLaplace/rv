@@ -25,7 +25,7 @@ import { isTyping } from "../lib/events";
 import { readLocation, readPreferences, viewHref, type ViewLocation } from "../lib/location";
 import { rememberPosition, scrollStore } from "../lib/scroll";
 import { compareTreePaths } from "../lib/sort";
-import type { Command } from "../lib/shortcuts";
+import { shortcutKeys, shortcutTitle, type Command } from "../lib/shortcuts";
 import { formatPrompt, reference } from "../prompt.js";
 import { TextSearchBar, useTextSearch, type TextSearchSource } from "./TextSearch";
 import { Sidebar } from "./Sidebar";
@@ -34,6 +34,7 @@ import { useScopeRefresh, type ReviewScope } from "./useScopeRefresh";
 import { DiffFileHeader, FileHeading } from "./FileHeading";
 import { CopiedPromptDialog, LinePicker, PromptDialog } from "./Dialogs";
 import { useKeyboard } from "./useKeyboard";
+import { useShortcutSettings } from "./useShortcutSettings";
 import { useViewerScroll } from "./useViewerScroll";
 import { useSavedState } from "./useSavedState";
 import { useOutdatedComments } from "./useOutdatedComments";
@@ -152,6 +153,8 @@ export function Review({
   const [dialog, setDialog] =
     useState<"commands" | "finder" | "line" | "prompt" | "copied" | null>(null);
   const closeDialog = () => setDialog(null);
+  const shortcutSettings = useShortcutSettings(dialog === "commands");
+  const shortcutOverrides = shortcutSettings.overrides;
   const [reviewPickerRequest, setReviewPickerRequest] = useState(0);
   const [showFiles, setShowFiles] = useState(saved.showFiles);
   const [showComments, setShowComments] = useState(saved.showComments);
@@ -1273,6 +1276,7 @@ export function Review({
 
   useKeyboard({
     run: runCommand,
+    overrides: shortcutOverrides,
     escape: () => {
       if (find.open) {
         find.close();
@@ -1406,17 +1410,17 @@ export function Review({
         <div className="top-actions">
           <button
             className="finder-trigger"
-            title="Find a file (F)"
+            title={shortcutTitle("Find a file", "find-file", shortcutOverrides)}
             onClick={() => setDialog("finder")}
           >
             <span aria-hidden="true">⌕</span>
             Find file
-            <kbd>F</kbd>
+            {shortcutKeys("find-file", shortcutOverrides).map((key, index) => <kbd key={index}>{key}</kbd>)}
           </button>
           <button
             className="shortcut-trigger"
             aria-label="Command launcher"
-            title="Command launcher (? or Cmd+K)"
+            title={shortcutTitle("Command launcher", "palette", shortcutOverrides)}
             onClick={() => setDialog("commands")}
           >
             ?
@@ -1427,7 +1431,7 @@ export function Review({
           <button
             className="copy-secondary"
             aria-label={`${copyLabel} ${comments.length}`}
-            title="Copy review prompt (Y)"
+            title={shortcutTitle("Copy review prompt", "copy-prompt", shortcutOverrides)}
             disabled={!comments.length || submitting}
             onClick={copyPrompt}
           >
@@ -1502,6 +1506,7 @@ export function Review({
             />
           )}
           <FileHeading
+            shortcutOverrides={shortcutOverrides}
             path={messageView || paths.includes(selected) ? selected : ""}
             title={messageView ? `Commit message · ${comparison.target.slice(0, 7)}` : ""}
             summary={diffAll ? summary : undefined}
@@ -1640,6 +1645,7 @@ export function Review({
           } : null}
           errors={[copyError, submitError, storageError, outdatedError, reviewCheckError, reviewActionError]}
           onPreview={() => setDialog("prompt")}
+          hideTitle={shortcutTitle("Hide comments", "toggle-comments", shortcutOverrides)}
           onHide={() => setShowComments(false)}
           onResize={setCommentsWidth}
           hidden={!showComments}
@@ -1648,7 +1654,7 @@ export function Review({
           <button
             className="panel-toggle"
             aria-label="Show comments"
-            title="Show comments (M)"
+            title={shortcutTitle("Show comments", "toggle-comments", shortcutOverrides)}
             aria-controls="review-comments"
             onClick={() => setShowComments(true)}
           >
@@ -1672,6 +1678,7 @@ export function Review({
       )}
       {dialog === "finder" && (
         <FileFinder
+          shortcut={shortcutKeys("find-file", shortcutOverrides)}
           paths={hasMessage ? [MESSAGE_PATH, ...paths] : paths}
           reviewed={reviewedInView || []}
           onSelect={select}
@@ -1681,6 +1688,10 @@ export function Review({
       )}
       {dialog === "commands" && (
         <CommandLauncher
+          overrides={shortcutOverrides}
+          saving={shortcutSettings.saving}
+          error={shortcutSettings.error}
+          onUpdate={shortcutSettings.update}
           onClose={closeDialog}
           onChoose={(command) => {
             closeDialog();
