@@ -6,11 +6,9 @@ export function nameHue(name: string) {
   return (hash >>> 0) % 360;
 }
 
-// Keep relative ages stable for this page snapshot; there is no refresh timer.
-const reviewTime = Date.now();
 const relativeTime = new Intl.RelativeTimeFormat("en", { style: "narrow" });
 export function commitAge(date: string) {
-  const seconds = (new Date(date).getTime() - reviewTime) / 1000;
+  const seconds = (new Date(date).getTime() - Date.now()) / 1000;
   const units: [Intl.RelativeTimeFormatUnit, number][] = [
     ["year", 365 * 86400],
     ["month", 30 * 86400],
